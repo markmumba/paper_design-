@@ -60,6 +60,11 @@ const GLOW_GRADIENT =
   "radial-gradient(circle closest-side, rgba(255,186,104,0.34) 0%, rgba(255,160,80,0.12) 45%, rgba(255,150,70,0) 100%)";
 const SECRET_MASK = "radial-gradient(circle closest-side, #000 0%, rgba(0,0,0,0.55) 45%, transparent 100%)";
 
+const DARK_SHRINK = 8;
+
+/** Hero progress by which every layer has faded out. */
+const FADED = 0.94;
+
 export function Hero() {
   const ref = useRef<HTMLElement>(null);
   const roomRef = useRef<HTMLDivElement>(null);
@@ -82,7 +87,7 @@ export function Hero() {
   const spin = useTransform(scrollYProgress, [0, 1], [0, 50]);
   const stageFade = useTransform(scrollYProgress, [0.55, 0.9], [1, 0]);
   const dawn = useTransform(scrollYProgress, [0.3, 0.9], [1, 0]);
-  const veil = useTransform(scrollYProgress, [0.66, 0.92], [1, 0]);
+  const veil = useTransform(scrollYProgress, [0.66, FADED - 0.02], [1, 0]);
   const titleFade = useTransform(scrollYProgress, [0, 0.28], [1, 0]);
   const titleLift = useTransform(scrollYProgress, [0, 0.28], [0, -90]);
 
@@ -108,14 +113,25 @@ export function Hero() {
     let raf = 0;
     // Once the hero has scrolled away, stop the candle loop and freeze the
     // orrery's spinning rings so they stop costing frames in later folios.
+    // It also stops once it has fully faded: the hero overlaps the top of
+    // Folio I, and an invisible hero still costs every frame drawn over it.
     let onScreen = true;
-    const io = new IntersectionObserver(([e]) => {
+    let intersecting = true;
+    const update = () => {
+      const live = intersecting && scrollYProgress.get() < FADED;
+      if (live === onScreen) return;
       // Coming back up to the desk: the candle is struck again.
-      if (e.isIntersecting && !onScreen) sound.strike();
-      onScreen = e.isIntersecting;
-      room.toggleAttribute("data-paused", !onScreen);
+      if (live) sound.strike();
+      onScreen = live;
+      room.toggleAttribute("data-paused", !live);
+      room.style.visibility = live ? "" : "hidden";
+    };
+    const io = new IntersectionObserver(([e]) => {
+      intersecting = e.isIntersecting;
+      update();
     });
     io.observe(room);
+    const offProgress = scrollYProgress.on("change", update);
     // The wick pops now and then while you're at the desk.
     const crackles = window.setInterval(() => {
       if (onScreen && Math.random() < 0.45) sound.crackle();
@@ -151,13 +167,17 @@ export function Hero() {
       const R0 = D * 0.34;
       const k = Math.max(0.6, r / R0);
       if (darkRef.current) {
+        // The darkness spans four screen diagonals. Painting it at full size
+        // made a layer ~9000px square; a smooth gradient survives being drawn
+        // at an eighth of that and scaled up, at a sixty-fourth of the cost.
         const S = D * 4;
+        const s = S / DARK_SHRINK;
         const el = darkRef.current;
-        if (el.dataset.size !== String(Math.round(S))) {
-          el.dataset.size = String(Math.round(S));
-          el.style.width = el.style.height = `${S}px`;
+        if (el.dataset.size !== String(Math.round(s))) {
+          el.dataset.size = String(Math.round(s));
+          el.style.width = el.style.height = `${s}px`;
         }
-        el.style.transform = `translate3d(${x - S / 2}px, ${y - S / 2}px, 0) scale(${k})`;
+        el.style.transform = `translate3d(${x - s / 2}px, ${y - s / 2}px, 0) scale(${k * DARK_SHRINK})`;
       }
       if (strikeRef.current) strikeRef.current.style.opacity = String(1 - L.on);
       if (glowRef.current) {
@@ -166,6 +186,9 @@ export function Hero() {
         el.style.width = el.style.height = `${S}px`;
         el.style.transform = `translate3d(${x - S / 2}px, ${y - S / 2}px, 0) scale(${k * 0.85})`;
         el.style.opacity = String(L.on);
+        // Its soft-light blend re-mixes everything beneath it, including the
+        // folio drawing underneath, so drop it once dawn has put the candle out.
+        el.style.display = dawn.get() < 0.02 ? "none" : "";
       }
       if (secretRef.current && secretInnerRef.current) {
         // A round window that travels with the flame while its contents stay
@@ -198,9 +221,10 @@ export function Hero() {
       cancelAnimationFrame(raf);
       window.removeEventListener("pointermove", onMove);
       io.disconnect();
+      offProgress();
       window.clearInterval(crackles);
     };
-  }, [reduce, dawn]);
+  }, [reduce, dawn, scrollYProgress]);
 
   const spill = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if ((e.target as Element).closest("a")) return;

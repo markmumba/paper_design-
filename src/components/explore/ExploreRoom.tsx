@@ -307,7 +307,8 @@ export function ExploreRoom({ config, onClose: done }: { config: RoomConfig; onC
       <div className="relative min-h-0 flex-1">
         <Canvas
           key={mode}
-          shadows
+          // PCF filtering: three.js removed the soft variant R3F asks for by default.
+          shadows="percentage"
           dpr={[1, 2]}
           camera={
             mode === "anatomia"

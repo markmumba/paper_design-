@@ -5,6 +5,7 @@ import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { sound } from "@/lib/sound";
 import { ExploreRoom, FollowCamera, type RoomConfig, type Subject, type ViewDef } from "../ExploreRoom";
+import { Figure } from "../figure";
 import { Beam, Look, Part, type Drive, type PartDef } from "../kit";
 import { Cloud, Coastline, Field, Sky, Smoke, type SmokeHandle } from "../scenery";
 
@@ -19,8 +20,8 @@ import { Cloud, Coastline, Field, Sky, Smoke, type SmokeHandle } from "../scener
  */
 
 const R = 1.9; // radius of the screw
-const H0 = 0.95; // bottom of the helix
-const H1 = 3.95; // top of the helix
+const H0 = 2.1; // bottom of the helix, above the crew's heads
+const H1 = 5.1; // top of the helix
 const TURNS = 1.1;
 
 function helixPoint(u: number, frac: number) {
@@ -57,49 +58,49 @@ const PARTS: PartDef[] = [
     italian: "La vite",
     english: "The screw",
     text: "A helix of linen, its pores stopped with starch so air cannot pass. Turned quickly, Leonardo wrote, it would 'make its female in the air' and climb, as a screw climbs into wood.",
-    target: [0.6, 2.5, 0.4],
-    camera: [4.2, 3.8, 4.6],
+    target: [0.6, 3.6, 0.4],
+    camera: [4.6, 5.0, 5.2],
     explode: [0, 1.1, 0],
-    label: [1.6, 3.1, 0.6],
+    label: [1.6, 4.2, 0.6],
   },
   {
     id: "cerchio",
     italian: "Il cerchio",
     english: "The rim",
     text: "A rim of cane or iron wire along the outer edge holds the linen taut, so the helix keeps its shape instead of flapping like a loose sail.",
-    target: [1.5, 2.2, 0],
-    camera: [4.6, 2.6, 2.4],
+    target: [1.5, 3.3, 0],
+    camera: [4.8, 3.9, 2.6],
     explode: [0, 1.7, 0],
-    label: [-1.7, 1.4, 0.4],
+    label: [-1.7, 2.6, 0.4],
   },
   {
     id: "albero",
     italian: "L'albero",
     english: "The mast",
     text: "A single upright spine carries the screw and turns with it, resting in an iron bearing at the centre of the platform.",
-    target: [0, 2.2, 0],
-    camera: [2.4, 2.8, 2.6],
-    label: [0, 4.55, 0],
+    target: [0, 2.9, 0],
+    camera: [2.8, 3.6, 3.0],
+    label: [0, 5.8, 0],
   },
   {
     id: "stanghe",
     italian: "Le stanghe",
     english: "The push bars",
     text: "Four bars fixed to the mast, at chest height for the men who walk round and round pushing them.",
-    target: [0.9, 0.6, 0.9],
-    camera: [3.0, 1.9, 3.2],
+    target: [0.9, 1.15, 0.9],
+    camera: [3.0, 2.3, 3.2],
     explode: [0, 0.35, 0],
-    label: [1.8, 0.75, 0],
+    label: [1.85, 1.3, 0],
   },
   {
     id: "garzoni",
     italian: "I garzoni",
     english: "The crew",
     text: "Leonardo imagined men turning it by hand. Four people walking in circles could never turn it fast enough to fly, but the idea, a rotor driven by an engine on board, is the helicopter's.",
-    target: [-1.3, 0.8, 0.4],
-    camera: [-3.6, 2.0, 3.0],
+    target: [-0.9, 1.1, 0.7],
+    camera: [-3.4, 2.1, 3.1],
     explode: [0, -0.35, 0],
-    label: [0.2, 1.55, -1.7],
+    label: [0.4, 2.15, -1.3],
   },
   {
     id: "piattaforma",
@@ -113,38 +114,44 @@ const PARTS: PartDef[] = [
   },
 ];
 
-/** One of the crew, leaning into his bar. */
-function Pusher({ angle }: { angle: number }) {
-  // Stand just outside the bar's end, facing along the direction of push.
-  const x = Math.cos(angle) * 1.55;
-  const z = Math.sin(angle) * 1.55;
+const DECK_TOP = 0.17;
+const BAR_Y = 1.15; // chest height on the deck
+const CREW_R = 1.3; // where the men walk
+const BEHIND = 0.62; // radians: how far behind his bar each man walks
+
+/**
+ * One of the crew walking behind his bar, leaning into it, both hands on it.
+ * The screw turns towards decreasing angle, so he stands at a larger angle
+ * than his bar and faces along the direction of travel.
+ */
+function Pusher({ bar, walked }: { bar: number; walked: Drive }) {
+  const b = bar + BEHIND;
+  const pos = useMemo(() => new THREE.Vector3(Math.cos(b) * CREW_R, DECK_TOP, Math.sin(b) * CREW_R), [b]);
+  const yaw = Math.PI / 2 - b;
+  // Grip points on the bar, either side of where his path crosses it, in his own frame.
+  const hands = useMemo(() => {
+    const inv = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -yaw);
+    return [CREW_R - 0.2, CREW_R + 0.2].map((r) =>
+      new THREE.Vector3(Math.cos(bar) * r, BAR_Y, Math.sin(bar) * r).sub(pos).applyQuaternion(inv),
+    ) as [THREE.Vector3, THREE.Vector3];
+  }, [bar, pos, yaw]);
   return (
-    <group position={[x, 0.11, z]} rotation={[0, -angle, 0]}>
-      <group rotation={[0, 0, 0.35]}>
-        <Beam from={[0, 0.05, -0.08]} to={[0, 0.8, -0.08]} r={0.05} kind="skin" />
-        <Beam from={[0, 0.05, 0.08]} to={[0, 0.8, 0.08]} r={0.05} kind="skin" />
-        <mesh position={[0, 1.08, 0]} castShadow>
-          <capsuleGeometry args={[0.15, 0.32, 4, 10]} />
-          <Look kind="skin" />
-        </mesh>
-        <mesh position={[0, 1.5, 0]} castShadow>
-          <sphereGeometry args={[0.12, 14, 10]} />
-          <Look kind="skin" />
-        </mesh>
-      </group>
-      {/* Arms reaching to the bar. */}
-      <Beam from={[0.12, 1.26, -0.12]} to={[0.05, 0.62, -0.46]} r={0.035} kind="skin" />
-      <Beam from={[0.12, 1.26, 0.12]} to={[0.05, 0.62, -0.46]} r={0.035} kind="skin" />
+    <group position={pos} rotation={[0, yaw, 0]}>
+      <Figure lean={0.3} hands={hands} walked={walked} />
     </group>
   );
 }
 
 function ScrewModel({ drive, deck }: { drive: Drive; deck?: Drive }) {
   const turning = useRef<THREE.Group>(null);
+  // How far the crew have walked round the deck, which drives their stride.
+  const walked = useRef(0);
   const geo = useMemo(() => ({ helix: helixGeometry(), rim: new THREE.TubeGeometry(RIM_CURVE, 160, 0.035, 6, false) }), []);
   useFrame(() => {
     // The screw turns relative to its deck, which may itself be turning.
-    if (turning.current) turning.current.rotation.y = drive.current - (deck?.current ?? 0);
+    const rel = drive.current - (deck?.current ?? 0);
+    if (turning.current) turning.current.rotation.y = rel;
+    walked.current = rel * CREW_R;
   });
   const ribs = useMemo(() => Array.from({ length: 12 }, (_, i) => helixPoint(i / 11, 1)), []);
   const bars = [0, 1, 2, 3].map((k) => (k * Math.PI) / 2 + Math.PI / 4);
@@ -170,8 +177,8 @@ function ScrewModel({ drive, deck }: { drive: Drive; deck?: Drive }) {
 
       <group ref={turning}>
         <Part id="albero">
-          <Beam from={[0, 0.12, 0]} to={[0, 4.4, 0]} r={0.075} kind="wood" />
-          <mesh position={[0, 4.48, 0]}>
+          <Beam from={[0, 0.12, 0]} to={[0, 5.55, 0]} r={0.075} kind="wood" />
+          <mesh position={[0, 5.63, 0]}>
             <coneGeometry args={[0.12, 0.22, 10]} />
             <Look kind="iron" />
           </mesh>
@@ -191,12 +198,12 @@ function ScrewModel({ drive, deck }: { drive: Drive; deck?: Drive }) {
         </Part>
         <Part id="stanghe">
           {bars.map((a) => (
-            <Beam key={a} from={[0, 0.62, 0]} to={[Math.cos(a) * 1.75, 0.62, Math.sin(a) * 1.75]} r={0.045} kind="darkwood" />
+            <Beam key={a} from={[0, BAR_Y, 0]} to={[Math.cos(a) * 1.8, BAR_Y, Math.sin(a) * 1.8]} r={0.045} kind="darkwood" />
           ))}
         </Part>
         <Part id="garzoni">
           {bars.map((a) => (
-            <Pusher key={a} angle={a + 0.32} />
+            <Pusher key={a} bar={a} walked={walked} />
           ))}
         </Part>
       </group>
@@ -281,8 +288,8 @@ function LiftScene({ view }: { view: string }) {
       smoke.current?.emit(tmp.current.set(Math.cos(a) * 2.6, 0.3, Math.sin(a) * 2.6), 1.6);
     }
     const sub = subject.current;
-    sub.pos.set(0, s.y + 2, 0);
-    sub.look!.set(0, s.y + 2, 0);
+    sub.pos.set(0, s.y + 2.7, 0);
+    sub.look!.set(0, s.y + 2.7, 0);
   });
 
   return (
@@ -314,7 +321,7 @@ const CONFIG: RoomConfig = {
   title: "Vite aerea",
   ariaLabel: "The aerial screw in three dimensions",
   parts: PARTS,
-  overview: { target: [0, 2.0, 0], camera: [7.5, 5.2, 8.5] },
+  overview: { target: [0, 2.7, 0], camera: [8.4, 6.2, 9.6] },
   Model: ScrewModel,
   rest: 0,
   animate: (t) => t * 1.4,

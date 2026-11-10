@@ -4,6 +4,7 @@ import { Line } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { Figure } from "./figure";
 import type { Line2 } from "three-stdlib";
 import { INK, Look, Part, SPOT, useExplode, useLook, type Drive, type PartDef } from "./kit";
 
@@ -338,40 +339,29 @@ function Cords({ flap }: { flap: FlapSource }) {
   );
 }
 
-/** A limb as a capsule stretched between two points. */
-function Limb({ from, to, r }: { from: [number, number, number]; to: [number, number, number]; r: number }) {
-  const { pos, quat, len } = useMemo(() => {
-    const a = new THREE.Vector3(...from);
-    const b = new THREE.Vector3(...to);
-    const dir = b.clone().sub(a);
-    return {
-      pos: a.clone().add(b).multiplyScalar(0.5),
-      quat: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize()),
-      len: dir.length(),
-    };
-  }, [from, to]);
-  return (
-    <mesh position={pos} quaternion={quat} castShadow>
-      <capsuleGeometry args={[r, Math.max(0.01, len - r * 2), 4, 10]} />
-      <Look kind="skin" />
-    </mesh>
-  );
-}
+/*
+ * The flier: the same anatomical man as the crew of the aerial screw, lying
+ * face down in the cradle at three-quarter scale, hands forward on the cords
+ * and feet in the stirrups. His own frame (feet at the origin, facing +X,
+ * up +Y) is turned so his head points forward (+Z) and his face down (-Y).
+ */
+const FLIER_SCALE = 0.75;
+const FLIER_AT = new THREE.Vector3(0, -0.2, -0.78);
+const FLIER_TURN = new THREE.Quaternion().setFromRotationMatrix(
+  new THREE.Matrix4().makeBasis(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(-1, 0, 0)),
+);
+/** A point on the machine, in the flier's own frame. */
+const toFlier = (x: number, y: number, z: number) =>
+  new THREE.Vector3(x, y, z).sub(FLIER_AT).applyQuaternion(FLIER_TURN.clone().invert()).divideScalar(FLIER_SCALE);
+const FLIER_HANDS: [THREE.Vector3, THREE.Vector3] = [toFlier(0.24, -0.06, 0.62), toFlier(-0.24, -0.06, 0.62)];
+// Left foot first: his left (+Z in his frame) is the machine's -X.
+const FLIER_FEET: [THREE.Vector3, THREE.Vector3] = [toFlier(-0.12, -0.34, -0.76), toFlier(0.12, -0.34, -0.76)];
 
-/** The flier, lying face down in the cradle: hands on the cords, feet in the stirrups. */
 function Flier() {
   return (
-    <>
-      <mesh position={[0, -0.17, 0.5]} castShadow>
-        <sphereGeometry args={[0.085, 16, 12]} />
-        <Look kind="skin" />
-      </mesh>
-      <Limb from={[0, -0.2, 0.36]} to={[0, -0.23, -0.18]} r={0.105} />
-      <Limb from={[0.12, -0.17, 0.3]} to={[0.24, -0.06, 0.62]} r={0.035} />
-      <Limb from={[-0.12, -0.17, 0.3]} to={[-0.24, -0.06, 0.62]} r={0.035} />
-      <Limb from={[0.07, -0.25, -0.2]} to={[0.12, -0.34, -0.76]} r={0.045} />
-      <Limb from={[-0.07, -0.25, -0.2]} to={[-0.12, -0.34, -0.76]} r={0.045} />
-    </>
+    <group position={FLIER_AT} quaternion={FLIER_TURN} scale={FLIER_SCALE}>
+      <Figure lean={0} hands={FLIER_HANDS} feet={FLIER_FEET} />
+    </group>
   );
 }
 

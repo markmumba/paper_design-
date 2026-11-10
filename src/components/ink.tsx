@@ -107,6 +107,50 @@ export function LivePath({
 const ZERO = motionValue(0);
 
 /** A handwritten margin note with a leader line pointing at a part. */
+/** English for every Italian margin label, shown beneath it. */
+const GLOSS: Record<string, string> = {
+  "ala di pipistrello": "bat's wing",
+  aperta: "open",
+  chiusa: "shut",
+  "cinque dei lombi": "five of the loins",
+  "dodici del dorso": "twelve of the back",
+  "i vortici": "the eddies",
+  "il centro del quadrato": "centre of the square",
+  "il cerchio": "the circle",
+  "il seno": "the sinus",
+  "l’aorta": "the aorta",
+  "l’ombelico": "the navel",
+  "l’osso sacro": "the sacrum",
+  "la valvola": "the valve",
+  "le tre linee": "the three lines",
+  mascella: "jaw",
+  occhio: "eye socket",
+  segato: "sawn off",
+  "sette del collo": "seven of the neck",
+  "una spina di troppo": "one spine too many",
+  albero: "mast",
+  arco: "bow",
+  argano: "winch",
+  bombarde: "cannons",
+  carrucola: "pulley",
+  contrappeso: "counterweight",
+  fionda: "sling",
+  guscio: "shell",
+  "i garzoni spingono": "the crew push",
+  ingranaggi: "gears",
+  "la linea del tiro": "path of the shot",
+  "la noce": "trigger nut",
+  "lino inamidato": "starched linen",
+  manovella: "crank",
+  perno: "pivot",
+  ruote: "wheels",
+  "ruote inclinate": "splayed wheels",
+  telaio: "frame",
+  timone: "rudder",
+  torretta: "lookout turret",
+  vite: "screw",
+};
+
 export function Note({
   p,
   from,
@@ -145,6 +189,17 @@ export function Note({
       >
         {text}
       </motion.text>
+      {GLOSS[text] && (
+        <motion.text
+          x={x2 + dx}
+          y={y2 + 19}
+          textAnchor={anchor}
+          className="fill-faded"
+          style={{ opacity, fontFamily: "var(--font-cormorant)", fontStyle: "italic", fontSize: 11 }}
+        >
+          {GLOSS[text]}
+        </motion.text>
+      )}
     </motion.g>
   );
 }
@@ -163,6 +218,8 @@ export function Micro({
   mirror = true,
   rotate = 0,
   until,
+  by = "ours",
+  cite,
 }: {
   p: MotionValue<number>;
   from: number;
@@ -173,6 +230,9 @@ export function Micro({
   mirror?: boolean;
   rotate?: number;
   until?: number;
+  /** Whose words these are: Leonardo's (give `cite`), or ours in his manner. */
+  by?: "leonardo" | "ours";
+  cite?: string;
 }) {
   const opacity = useTransform(
     p,
@@ -196,6 +256,16 @@ export function Micro({
           </text>
         ))}
       </g>
+      {/* A plain, unmirrored credit beneath, so nothing passes for Leonardo's that isn't. */}
+      <text
+        x={x}
+        y={y + lines.length * size * 1.5 + size * 0.6}
+        transform={rotate ? `rotate(${rotate} ${x} ${y})` : undefined}
+        className={by === "leonardo" ? "fill-sepia" : "fill-rust"}
+        style={{ fontFamily: "var(--font-cormorant)", fontStyle: "italic", fontSize: Math.max(4, size * 0.85) }}
+      >
+        {by === "leonardo" ? `— Leonardo${cite ? `, ${cite}` : ""}` : "— our note, written in his manner"}
+      </text>
     </motion.g>
   );
 }

@@ -207,3 +207,32 @@ body::after {
     transform: rotate(360deg);
   }
 }
+
+/* Leonardo's mirror hand, deciphered glyph by glyph (see MirrorReveal). */
+.mirror-reveal > span > span {
+  display: inline-block;
+  transform: perspective(300px) rotateY(180deg);
+  opacity: 0.5;
+  filter: blur(0.4px);
+  transition:
+    transform 0.55s cubic-bezier(0.3, 1.4, 0.5, 1) var(--d),
+    opacity 0.4s ease var(--d),
+    filter 0.4s ease var(--d);
+}
+.mirror-reveal[data-read] > span > span {
+  transform: none;
+  opacity: 1;
+  filter: none;
+}
+/* Going back up, the page folds back into mirror script all at once. */
+.mirror-reveal:not([data-read]) > span > span {
+  transition-delay: 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mirror-reveal > span > span {
+    transform: none;
+    opacity: 1;
+    filter: none;
+    transition: none;
+  }
+}

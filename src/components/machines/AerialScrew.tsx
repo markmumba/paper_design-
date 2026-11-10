@@ -156,6 +156,8 @@ export function AerialScrew({ p }: MachineProps) {
       <Ink d={stipple(CX, 452, 160, 8, 260, 8)} p={p} from={0.14} to={0.2} w={0.6} opacity={0.4} />
 
       <Micro
+        by="leonardo"
+        cite="Manuscript B, f. 83v"
         p={p}
         from={0.3}
         x={20}
