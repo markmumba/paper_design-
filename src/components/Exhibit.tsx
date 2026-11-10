@@ -21,6 +21,8 @@ export type ExhibitData = {
   Machine: ComponentType<MachineProps>;
   /** Who wrote the Italian note: Leonardo (with where), or us. */
   quote: { by: "leonardo" | "ours"; ref?: string };
+  /** What to call the drawing in the toggle (default: our reconstruction). */
+  drawingLabel?: string;
   /** A public-domain scan of Leonardo's own page, for comparison. */
   scan: { src: string; caption: string; holder: string; href: string };
   /** Optional 3D exploration of the machine, loaded only when opened. */
@@ -357,7 +359,7 @@ export const Exhibit = memo(function Exhibit({
             <div className="absolute -top-8 left-0 z-10 flex items-center gap-1 rounded-full border border-sepia/40 bg-paper/85 p-0.5 font-caps text-[0.7rem] tracking-widest">
               {(
                 [
-                  [false, "Our reconstruction"],
+                  [false, data.drawingLabel ?? "Our reconstruction"],
                   [true, "Leonardo’s page"],
                 ] as const
               ).map(([v, label]) => (

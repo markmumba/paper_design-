@@ -111,6 +111,9 @@ const ZERO = motionValue(0);
 const GLOSS: Record<string, string> = {
   "ala di pipistrello": "bat's wing",
   aperta: "open",
+  denti: "teeth",
+  "la metà segata": "the sawn half",
+  "le cavità": "the hollows",
   chiusa: "shut",
   "cinque dei lombi": "five of the loins",
   "dodici del dorso": "twelve of the back",

@@ -124,14 +124,15 @@ export const STUDIES: Study[] = [
     date: "1489",
     at: [481, 318],
     scan: {
-      ...commons("Leonardo da Vinci - RCIN 919057, Verso The cranium 1489.jpg"),
-      caption: "The cranium, 1489 (RCIN 919057, verso). The other side of this sheet shows the skull sectioned.",
+      ...commons("Leonardo da Vinci - RCIN 919058, Verso The skull sectioned 1489.jpg"),
+      caption: "The skull sectioned, 1489 (RCIN 919058, verso).",
       holder: RCT,
     },
     shows:
       "Among his earliest anatomy, two decades before his great dissections. He drew the skull sawn open and set it where three lines at right angles meet, front to back, top to bottom and side to side, a way of locating what lies inside.",
     right: "Treating the head as a space you can map with a grid. A sheet from the same set opens with the note “On the 2nd day of April 1489”.",
     sources: [
+      { label: "Royal Collection, RCIN 919058", href: "https://col.rct.uk/collection/919058/recto-the-cranium-sectioned-verso-the-skull-sectioned" },
       { label: "Royal Collection, RCIN 919057", href: "https://www.rct.uk/collection/919057" },
       { label: "Royal Collection, RCIN 919059", href: "https://rct.uk/collection/919059/recto-the-cranium-verso-notes-on-topics-to-be-investigated" },
     ],
@@ -160,8 +161,10 @@ export const STUDIES: Study[] = [
     date: "c. 1510–11",
     at: [481, 505],
     scan: {
-      ...commons("Leonardo da Vinci - RCIN 919007, Verso The vertebral column c.1510-11.jpg"),
-      caption: "The vertebral column, c. 1510–11 (RCIN 919007, verso).",
+      // Commons has the two sides of this sheet swapped: the photo filed as the
+      // recto ("surface anatomy of the shoulder and arm") is the spine.
+      ...commons("Leonardo da Vinci - RCIN 919007, Recto The surface anatomy of the shoulder and arm.jpg"),
+      caption: "The vertebral column, c. 1510–11 (RCIN 919007, verso). On Wikimedia Commons this photo is filed under the other side’s title.",
       holder: RCT,
     },
     shows: "The whole column drawn from the front, the side and behind, with its sections and its curves.",
