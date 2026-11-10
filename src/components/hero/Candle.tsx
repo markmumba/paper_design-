@@ -42,9 +42,11 @@ export function Dust({ light }: { light: RefObject<Light> }) {
     let onScreen = true;
     const io = new IntersectionObserver(([e]) => (onScreen = e.isIntersecting));
     io.observe(canvas);
+    const paused = canvas.closest("#hero > div") ?? canvas;
     const tick = (t: number) => {
       raf = requestAnimationFrame(tick);
-      if (!onScreen) return;
+      // The hero marks itself paused once it has faded away.
+      if (!onScreen || paused.hasAttribute("data-paused")) return;
       const L = light.current;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);

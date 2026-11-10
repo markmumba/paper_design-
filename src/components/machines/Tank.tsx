@@ -187,6 +187,8 @@ export function Tank({ p }: MachineProps) {
       <Ink d={groundLitter(40, 560, 404, 31, 80)} p={p} from={0.1} to={0.18} w={0.4} opacity={0.6} />
 
       <Micro
+        by="leonardo"
+        cite="letter to Ludovico Sforza"
         p={p}
         from={0.3}
         x={18}

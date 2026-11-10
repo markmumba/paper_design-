@@ -1,7 +1,7 @@
 "use client";
 
-import { motion, useInView, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
-import { memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type RefObject } from "react";
+import { motion, useInView, useMotionValueEvent, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
+import { Fragment, memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type RefObject } from "react";
 import { Loupe } from "@/components/Loupe";
 
 export type MachineProps = { p: MotionValue<number> };
@@ -16,11 +16,29 @@ export type ExhibitData = {
   noteEn: string;
   body: string;
   steps: [string, string, string];
+  /** The last beat of each folio: would it have worked, and why. */
+  verdict: Verdict;
   Machine: ComponentType<MachineProps>;
+  /** Who wrote the Italian note: Leonardo (with where), or us. */
+  quote: { by: "leonardo" | "ours"; ref?: string };
+  /** A public-domain scan of Leonardo's own page, for comparison. */
+  scan: { src: string; caption: string; holder: string; href: string };
   /** Optional 3D exploration of the machine, loaded only when opened. */
   Explore?: ComponentType<{ onClose: () => void }>;
   /** Optional living environment drawn around the machine (wind, birds…). */
   Atmosphere?: ComponentType<{ p: MotionValue<number>; svgRef: RefObject<SVGSVGElement | null> }>;
+};
+
+export type Verdict = {
+  question: string;
+  answer: string;
+  tone: "yes" | "no" | "maybe";
+  why: string;
+  /** What he got right, even if the machine failed. */
+  right: string;
+  /** A modern test or reconstruction, if there is one. */
+  test?: string;
+  testSource?: { label: string; href: string };
 };
 
 // ── The spot plate: riso-style colour blocks printed behind each folio ────────
@@ -65,6 +83,131 @@ function SpotPlate({ index, p, base }: { index: number; p: MotionValue<number>; 
   );
 }
 
+/**
+ * Leonardo wrote right to left, every letter reversed. The note arrives in his
+ * mirror hand and is deciphered one glyph at a time, from the right, the way
+ * his pen moved. CSS transitions do the work, so scrolling costs nothing.
+ */
+function MirrorReveal({ text, p, at, className = "font-script text-3xl leading-snug text-sepia" }: { text: string; p: MotionValue<number>; at: number; className?: string }) {
+  const [read, setRead] = useState(() => p.get() > at);
+  useMotionValueEvent(p, "change", (v) => {
+    if (v > at !== read) setRead(v > at);
+  });
+  const words = text.split(" ");
+  const total = text.replace(/ /g, "").length;
+  const stagger = Math.min(40, 1100 / total);
+  let n = 0;
+  return (
+    <p aria-label={text} data-read={read || undefined} className={`mirror-reveal ${className}`}>
+      {words.map((w, wi) => (
+        <Fragment key={wi}>
+          <span aria-hidden className="inline-block whitespace-nowrap">
+            {[...w].map((ch, ci) => {
+              const i = n++;
+              // Right-most letter goes first.
+              return (
+                <span key={ci} style={{ "--d": `${Math.round((total - 1 - i) * stagger)}ms` } as CSSProperties}>
+                  {ch}
+                </span>
+              );
+            })}
+          </span>
+          {wi < words.length - 1 && " "}
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
+/** Says plainly whose words the Italian note is. */
+function QuoteBadge({ quote }: { quote: ExhibitData["quote"] }) {
+  return quote.by === "leonardo" ? (
+    <p className="mt-2 inline-flex items-center gap-2 rounded-full bg-ink px-3 py-0.5 font-caps text-[0.68rem] tracking-widest text-paper">
+      Leonardo’s words <span className="font-body text-xs normal-case tracking-normal opacity-80">· {quote.ref}</span>
+    </p>
+  ) : (
+    <p className="mt-2 inline-flex items-center gap-2 rounded-full border border-spot px-3 py-0.5 font-caps text-[0.68rem] tracking-widest text-spot">
+      Our caption <span className="font-body text-xs normal-case tracking-normal opacity-80">· written for this page, not by Leonardo</span>
+    </p>
+  );
+}
+
+const STAMP: Record<Verdict["tone"], string> = {
+  yes: "border-ink text-ink",
+  no: "spot-layer border-spot text-spot",
+  maybe: "border-rust text-rust",
+};
+
+/** Would it have worked? A plain answer, the reason, and what he got right anyway. */
+function VerdictPanel({ verdict, stamp, stampOpacity }: { verdict: Verdict; stamp: MotionValue<number>; stampOpacity: MotionValue<number> }) {
+  return (
+    <section aria-label={verdict.question} className="mt-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h3 className="font-display text-2xl italic md:text-3xl">{verdict.question}</h3>
+        <motion.p
+          style={{ scale: stamp, opacity: stampOpacity, rotate: -4 }}
+          className={`rounded-sm border-2 px-3 py-0.5 font-caps text-lg tracking-[0.2em] uppercase ${STAMP[verdict.tone]}`}
+        >
+          {verdict.answer}
+        </motion.p>
+      </div>
+      <p className="mt-3 text-[1.02rem] leading-relaxed md:text-[1.08rem]">{verdict.why}</p>
+      <dl className="mt-4 space-y-3 border-l border-sepia/40 pl-4 text-[0.95rem]">
+        <div>
+          <dt className="font-caps text-xs tracking-widest text-rust">What he got right</dt>
+          <dd className="text-sepia">{verdict.right}</dd>
+        </div>
+        {verdict.test && (
+        <div>
+          <dt className="font-caps text-xs tracking-widest text-rust">Tested since</dt>
+          <dd className="text-sepia">
+            {verdict.test}
+            {verdict.testSource && (
+              <>
+                {" "}
+                <a
+                  href={verdict.testSource.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="whitespace-nowrap text-faded italic underline decoration-dotted underline-offset-2 hover:text-ink"
+                >
+                  {verdict.testSource.label}
+                </a>
+              </>
+            )}
+          </dd>
+        </div>
+        )}
+      </dl>
+    </section>
+  );
+}
+
+/** Leonardo's own page (a public-domain scan), shown in place of our drawing. */
+function ScanView({ scan }: { scan: ExhibitData["scan"] }) {
+  return (
+    <figure className="absolute inset-0 z-[5] flex flex-col items-center justify-center gap-2 px-2 pt-12 pb-2">
+      {/* eslint-disable-next-line @next/next/no-img-element -- remote archival scan, shown as-is */}
+      <img
+        src={scan.src}
+        alt={scan.caption}
+        loading="lazy"
+        className="max-h-[58svh] w-auto max-w-full rounded-sm shadow-[0_8px_30px_rgba(58,39,23,0.25)]"
+      />
+      <figcaption className="max-w-xl rounded-sm bg-paper/90 px-3 py-1 text-center text-sm text-sepia">
+        <span className="italic">{scan.caption}</span>
+        <br />
+        <span className="text-faded">
+          {scan.holder} · public domain ·{" "}
+          <a href={scan.href} target="_blank" rel="noreferrer" className="underline decoration-dotted underline-offset-2 hover:text-ink">
+            view on Wikimedia Commons
+          </a>
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
 export const Exhibit = memo(function Exhibit({
   data,
   index,
@@ -80,13 +223,22 @@ export const Exhibit = memo(function Exhibit({
   const ref = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [exploring, setExploring] = useState(false);
+  const [showScan, setShowScan] = useState(false);
   const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
   const smooth = useSpring(scrollYProgress, { stiffness: 160, damping: 32, mass: 0.35 });
   const base = reduce ? scrollYProgress : smooth;
-  // The drawing plays out over most of the folio; the tail lets the finished
-  // page rest a moment before it lifts away for the next one.
-  const p = useTransform(base, [0, 0.88], [0, 1]);
+  // The drawing plays out over the first part of the folio. Then comes the
+  // verdict: would it actually have worked? The tail lets the finished page
+  // rest a moment before it lifts away for the next one.
+  const p = useTransform(base, [0, 0.7], [0, 1]);
+  const storyOpacity = useTransform(base, [0.71, 0.75], [1, 0]);
+  const verdictOpacity = useTransform(base, [0.74, 0.78], [0, 1]);
+  const verdictY = useTransform(base, [0.74, 0.79], [18, 0]);
+  const stamp = useTransform(base, [0.76, 0.8], [1.5, 1]);
+  const stampOpacity = useTransform(base, [0.76, 0.78], [0, 1]);
+  const storyEvents = useTransform(storyOpacity, (o) => (o > 0.5 ? "auto" : "none"));
+  const verdictEvents = useTransform(verdictOpacity, (o) => (o > 0.5 ? "auto" : "none"));
 
   const inView = useInView(ref, { amount: 0.35 });
   useEffect(() => {
@@ -96,7 +248,6 @@ export const Exhibit = memo(function Exhibit({
   // Text choreography, all keyed to the same scroll progress as the drawing.
   const headOpacity = useTransform(p, [0, 0.08], [0, 1]);
   const headY = useTransform(p, [0, 0.08], [24, 0]);
-  const noteFlip = useTransform(p, [0.08, 0.24], [180, 0]);
   const noteEnOpacity = useTransform(p, [0.2, 0.28], [0, 1]);
   const bodyOpacity = useTransform(p, [0.14, 0.24], [0, 1]);
   const ruler = useTransform(base, [0, 1], [0, 1]);
@@ -118,7 +269,7 @@ export const Exhibit = memo(function Exhibit({
     <section
       ref={ref}
       id={`folio-${index + 1}`}
-      className="relative h-[460vh]"
+      className="relative h-[560vh]"
       style={pullUp ? { marginTop: pullUp } : undefined}
       aria-labelledby={`title-${index}`}
     >
@@ -145,19 +296,18 @@ export const Exhibit = memo(function Exhibit({
               <h2 id={`title-${index}`} className="mt-2 font-display text-[clamp(2.2rem,5vw,4rem)] leading-none">
                 {data.title}
               </h2>
-              <p className="mt-1 font-display text-xl text-sepia italic">{data.italian}</p>
+              <MirrorReveal text={data.italian} p={p} at={0.03} className="mt-1 font-display text-xl text-sepia italic" />
             </motion.div>
 
-            <div className="mt-5 hidden md:block" style={{ perspective: 700 }}>
-              <motion.p
-                className="origin-left font-script text-3xl leading-snug text-sepia"
-                style={{ rotateY: noteFlip }}
-              >
-                “{data.note}”
-              </motion.p>
-              <motion.p className="mt-1 text-base text-faded italic" style={{ opacity: noteEnOpacity }}>
-                {data.noteEn}
-              </motion.p>
+            {/* The story and the verdict share one place; scroll swaps them. */}
+            <div className="grid">
+              <motion.div className="[grid-area:1/1]" style={{ opacity: storyOpacity, pointerEvents: storyEvents }}>
+            <div className="mt-5 hidden md:block">
+              <MirrorReveal text={`“${data.note}”`} p={p} at={0.1} />
+              <motion.div style={{ opacity: noteEnOpacity }}>
+                <p className="mt-1 text-base text-faded italic">{data.noteEn}</p>
+                <QuoteBadge quote={data.quote} />
+              </motion.div>
             </div>
 
             <motion.p className="mt-4 text-[1.05rem] md:text-lg" style={{ opacity: bodyOpacity }}>
@@ -172,7 +322,18 @@ export const Exhibit = memo(function Exhibit({
                 </motion.li>
               ))}
             </ol>
-            <p className="mt-3 text-sm text-faded italic">{data.source}</p>
+            <p className="mt-3 text-sm text-faded italic">
+              <span className="font-caps tracking-widest not-italic">Source · </span>
+              {data.source}
+            </p>
+              </motion.div>
+              <motion.div
+                className="[grid-area:1/1]"
+                style={{ opacity: verdictOpacity, y: reduce ? 0 : verdictY, pointerEvents: verdictEvents }}
+              >
+                <VerdictPanel verdict={data.verdict} stamp={stamp} stampOpacity={stampOpacity} />
+              </motion.div>
+            </div>
             {data.Explore && (
               <motion.button
                 type="button"
@@ -192,11 +353,32 @@ export const Exhibit = memo(function Exhibit({
           </div>
 
           <div className="relative min-h-0 self-stretch md:self-center">
+            {/* Provenance: this drawing is ours. One click shows Leonardo's own page. */}
+            <div className="absolute -top-8 left-0 z-10 flex items-center gap-1 rounded-full border border-sepia/40 bg-paper/85 p-0.5 font-caps text-[0.7rem] tracking-widest">
+              {(
+                [
+                  [false, "Our reconstruction"],
+                  [true, "Leonardo’s page"],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={showScan === v}
+                  onClick={() => setShowScan(v)}
+                  className={`rounded-full px-3 py-1 transition-colors ${showScan === v ? "bg-ink text-paper" : "text-sepia hover:text-ink"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {showScan && <ScanView scan={data.scan} />}
             {data.Atmosphere && !reduce && <data.Atmosphere p={p} svgRef={svgRef} />}
             <svg
               ref={svgRef}
               viewBox="0 0 600 480"
-              className="relative h-full max-h-[78svh] w-full overflow-visible text-ink"
+              style={{ opacity: showScan ? 0 : 1 }}
+              className="relative h-full max-h-[78svh] w-full overflow-visible text-ink transition-opacity duration-500"
               role="img"
               aria-label={`Animated ink drawing of ${data.title}`}
             >
@@ -205,9 +387,9 @@ export const Exhibit = memo(function Exhibit({
               </g>
               <Loupe svgRef={svgRef} target={`machine-${index}`} id={String(index)} />
             </svg>
-            <p className="pointer-events-none absolute -top-6 right-0 hidden font-script text-lg text-faded md:block [@media(pointer:coarse)]:hidden">
+            {!showScan && <p className="pointer-events-none absolute -top-6 right-0 hidden font-script text-lg text-faded md:block [@media(pointer:coarse)]:hidden">
               hover the drawing to look closer
-            </p>
+            </p>}
           </div>
         </div>
 

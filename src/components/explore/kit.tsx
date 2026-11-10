@@ -107,7 +107,9 @@ export function halftone(shader: { fragmentShader: string }) {
   );
 }
 
-export type Kind = "wood" | "darkwood" | "cane" | "cloth" | "spot" | "metal" | "iron" | "skin" | "stone" | "rope";
+export type Kind =
+  | "wood" | "darkwood" | "cane" | "cloth" | "spot" | "metal" | "iron" | "skin" | "stone" | "rope"
+  | "flesh" | "hair" | "linen" | "cord";
 const BASE: Record<Kind, string> = {
   wood: "#dcbf92",
   darkwood: "#b48a58",
@@ -119,12 +121,21 @@ const BASE: Record<Kind, string> = {
   skin: "#ead2ae",
   stone: "#cbb894",
   rope: "#a9875c",
+  // A sun-browned working man, and his cropped hair.
+  flesh: "#d9a47c",
+  hair: "#6a4a2e",
+  // What the men wear: linen shorts and the cord that ties them.
+  linen: "#eee3ca",
+  cord: "#a07e55",
 };
 
 /** A material plus ink outline that respond to hover / selection. */
 export function Look({ kind, edges = true }: { kind: Kind; edges?: boolean }) {
   const { lit, dimmed } = useLook();
-  const color = lit ? (kind === "cloth" ? "#f6c3a8" : SPOT) : BASE[kind];
+  // People keep their own colours when picked: the rest of the machine dims,
+  // and painting a whole figure one flat colour would erase its form.
+  const anatomy = kind === "flesh" || kind === "hair" || kind === "linen" || kind === "cord";
+  const color = lit && !anatomy ? (kind === "cloth" ? "#f6c3a8" : SPOT) : BASE[kind];
   const thin = kind === "cloth" || kind === "spot";
   const opacity = dimmed ? 0.14 : kind === "cloth" ? 0.9 : 1;
   return (
