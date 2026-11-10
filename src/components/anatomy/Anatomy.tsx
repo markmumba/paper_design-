@@ -219,8 +219,10 @@ export function Anatomy() {
       <section id="fonti" className="mx-auto mt-28 max-w-3xl border-t border-sepia/30 px-4 pt-8 md:px-0">
         <p className="font-caps text-sm tracking-[0.3em] text-rust uppercase">Fonti · Sources</p>
         <p className="mt-3 text-base text-sepia">
-          The ink drawings in the folios are our redrawings, made for this page after Leonardo’s sheets; each folio’s
-          toggle shows his real one. The Italian captions are ours, written in his manner, not his words. The
+          The drawings in the folios are Leonardo’s own lines: his ink was lifted from the public-domain photographs
+          of his sheets and traced into pen paths, so the page can draw it again in the order a pen would move. The
+          red marks, brackets and moving eddies laid over them are ours, and each folio’s toggle shows the whole
+          sheet. The Italian captions are ours, written in his manner, not his words. The
           photographs of his sheets come from the institutions that hold them, shared as public domain on Wikimedia
           Commons. The red measurements are ours.
         </p>
