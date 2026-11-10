@@ -1,26 +1,209 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-paper: #e9dab9;
+  --color-paper-deep: #d9c398;
+  --color-ink: #3a2717;
+  --color-sepia: #6e4a2a;
+  --color-rust: #9b4724;
+  --color-faded: #8c7353;
+  /* Riso-style spot colour: a fluorescent vermilion close to Leonardo's red chalk. */
+  --color-spot: #e4572e;
+
+  --font-display: var(--font-fell), "Times New Roman", serif;
+  --font-caps: var(--font-fell-sc), "Times New Roman", serif;
+  --font-body: var(--font-cormorant), Georgia, serif;
+  --font-script: var(--font-aurore), cursive;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+  font-size: 1.125rem;
+  line-height: 1.55;
+  min-height: 100vh;
+  /* Aged-paper stains: a few soft blotches layered over the base tone. */
+  background:
+    radial-gradient(ellipse 60% 40% at 12% 18%, rgb(150 110 60 / 0.16), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 88% 70%, rgb(140 95 50 / 0.14), transparent 70%),
+    radial-gradient(ellipse 30% 25% at 70% 12%, rgb(120 80 40 / 0.10), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 25% 85%, rgb(160 120 70 / 0.12), transparent 70%),
+    var(--color-paper);
+  background-attachment: fixed;
+}
+
+/* Paper grain + vignette, fixed so it costs nothing on scroll. */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+}
+
+body::before {
+  /* Plain alpha, not mix-blend: a full-screen blend layer forces the browser to
+     re-blend the whole viewport on every scroll frame. */
+  opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.32 0 0 0 0 0.18 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+body::after {
+  background: radial-gradient(ellipse 85% 75% at 50% 50%, transparent 55%, rgb(90 55 20 / 0.28) 100%);
+}
+
+::selection {
+  background: rgb(155 71 36 / 0.25);
+}
+
+.mirror {
+  display: inline-block;
+  transform: scaleX(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ── Hero orrery motion ─────────────────────────────────────────────── */
+@keyframes orrery-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes orrery-spin-rev {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+@keyframes armillary {
+  to {
+    transform: rotateX(360deg);
+  }
+}
+@keyframes gilt-shimmer {
+  0% {
+    transform: translateX(-30%);
+  }
+  100% {
+    transform: translateX(30%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-[orrery"],
+  [style*="armillary"] {
+    animation: none !important;
+  }
+}
+
+/* An ink drop lands, spreads into the fibres, then dries paler. */
+@keyframes ink-land {
+  0% {
+    transform: scale(0.12);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  30% {
+    transform: scale(1.06);
+  }
+  45% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.02);
+    opacity: 0.55;
+  }
+}
+.ink-splat {
+  animation: ink-land 7s cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes flame-flicker {
+  0%,
+  100% {
+    transform: translate(-50%, -88%) scale(1, 1) rotate(-1deg);
+  }
+  25% {
+    transform: translate(-50%, -90%) scale(0.94, 1.08) rotate(2deg);
+  }
+  50% {
+    transform: translate(-50%, -87%) scale(1.04, 0.95) rotate(-2deg);
+  }
+  75% {
+    transform: translate(-50%, -91%) scale(0.97, 1.05) rotate(1deg);
+  }
+}
+
+/* The same aged paper as the page itself, for layers that must hide what is
+   beneath them (the hero covering Folio I until the dive dissolves it). */
+.paper-veil {
+  background:
+    radial-gradient(ellipse 60% 40% at 12% 18%, rgb(150 110 60 / 0.16), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 88% 70%, rgb(140 95 50 / 0.14), transparent 70%),
+    radial-gradient(ellipse 30% 25% at 70% 12%, rgb(120 80 40 / 0.1), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 25% 85%, rgb(160 120 70 / 0.12), transparent 70%),
+    var(--color-paper);
+  background-attachment: fixed;
+}
+
+/* ── Two-colour print: halftone screens and a spot layer out of register ── */
+
+/* The spot colour sits on its own "printing plate", nudged off-register by
+   --mis-x/--mis-y (fixed per folio so nothing repaints while scrolling). */
+.spot-layer {
+  transform: translate(var(--mis-x, 1.5px), var(--mis-y, -1px));
+}
+
+/* Halftone screens for HTML blocks (SVG shapes use the <pattern>s in InkFilters). */
+.halftone-spot {
+  background-image: radial-gradient(circle at center, var(--color-spot) 0 41%, transparent 44%);
+  background-size: 6px 6px;
+}
+.halftone-spot-dense {
+  background-color: color-mix(in srgb, var(--color-spot) 55%, transparent);
+  background-image: radial-gradient(circle at center, var(--color-spot) 0 52%, transparent 55%);
+  background-size: 5px 5px;
+}
+.halftone-ink {
+  background-image: radial-gradient(circle at center, var(--color-ink) 0 30%, transparent 33%);
+  background-size: 5px 5px;
+}
+/* A riso print never fills perfectly: blotchy coverage from the drum. */
+.riso-grain {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.04' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.2 2.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.04' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.2 2.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+/* The hero's clockwork stops turning once it has scrolled out of view. */
+[data-paused] *,
+[data-paused] *::before {
+  animation-play-state: paused !important;
+}
+
+/* Paper grain and vignette for full-screen layers that sit above the page's own. */
+.paper-grain {
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.32 0 0 0 0 0.18 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.paper-vignette {
+  pointer-events: none;
+  background: radial-gradient(ellipse 85% 75% at 50% 50%, transparent 55%, rgb(90 55 20 / 0.26) 100%);
+}
+@keyframes gear-turn {
+  to {
+    transform: rotate(360deg);
+  }
 }
