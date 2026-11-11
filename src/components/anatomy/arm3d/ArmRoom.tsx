@@ -7,6 +7,7 @@ import { ExploreRoom, FollowCamera, type RoomConfig, type Subject, type ViewDef 
 import { PAPER, Part, SPOT, type Drive, type PartDef, type Vec3 } from "@/components/explore/kit";
 import { Bone, Drift, useBones, type Manifest, type MeshInfo } from "../bones3d";
 import data from "./manifest.json";
+import { addFibres, Muscle, toneOf } from "./muscle";
 
 /*
  * Folio V in three dimensions: the shoulder and arm, muscle by muscle.
@@ -152,8 +153,22 @@ function Turntable({ angle, children }: { angle: () => number; children: ReactNo
   );
 }
 
-function ArmModel({ drive }: { drive: Drive }) {
+/** Every muscle gets its fibre coordinates once, when the meshes arrive. */
+function useArm() {
   const bones = useBones(URL, manifest);
+  useMemo(() => {
+    if (bones) for (const a of ALL) if (a.region !== "ossa") addFibres(bones.get(a.m.fma)!);
+  }, [bones]);
+  return bones;
+}
+
+/** A bone stays a bone; a muscle is drawn with its fibres. */
+function Piece({ a, geo }: { a: (typeof ALL)[number]; geo: THREE.BufferGeometry }) {
+  return a.region === "ossa" ? <Bone geo={geo} /> : <Muscle geo={geo} color={toneOf(COLOR[a.region], a.m.fma)} />;
+}
+
+function ArmModel({ drive }: { drive: Drive }) {
+  const bones = useArm();
   if (!bones) return null;
   return (
     <Turntable angle={() => stepAngle(drive.current)}>
@@ -164,7 +179,7 @@ function ArmModel({ drive }: { drive: Drive }) {
           <Part key={g.id} id={g.id} labelled={false}>
             {ms.map((a, i) => (
               <Drift key={a.m.fma} by={drift(a)} labelFor={i === 0 ? { id: g.id, at: def.label } : undefined}>
-                <Bone geo={bones.get(a.m.fma)!} color={COLOR[g.id]} />
+                <Piece a={a} geo={bones.get(a.m.fma)!} />
               </Drift>
             ))}
           </Part>
@@ -219,7 +234,7 @@ function Star({ step }: { step: React.RefObject<number> }) {
 }
 
 function EightScene({ view }: { view: string }) {
-  const bones = useBones(URL, manifest);
+  const bones = useArm();
   const u = useRef(0);
   const step = useRef(0);
   useFrame((_, dt) => {
@@ -236,7 +251,7 @@ function EightScene({ view }: { view: string }) {
       {bones && (
         <Turntable angle={() => stepAngle(u.current)}>
           {ALL.map((a) => (
-            <Bone key={a.m.fma} geo={bones.get(a.m.fma)!} color={COLOR[a.region]} />
+            <Piece key={a.m.fma} a={a} geo={bones.get(a.m.fma)!} />
           ))}
         </Turntable>
       )}
