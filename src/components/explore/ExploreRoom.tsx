@@ -176,10 +176,19 @@ function AnatomyScene({
     explode.current += ((exploded ? 1 : 0) - explode.current) * (1 - Math.exp(-dt * 3.5));
   });
   const select = useCallback((id: string) => onSelect(id), [onSelect]);
+  // The paper haze must begin beyond the model. On a narrow (portrait) screen
+  // the camera stands much further back to keep things framed (see CameraRig),
+  // and further still for an exploded view, so the haze is pushed out with it;
+  // otherwise the model dissolves into the paper and only its labels are left.
+  const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
+  const back = aspect < 1.2 ? Math.pow(1.2 / aspect, 0.75) : 1;
+  const reach = new THREE.Vector3(...(overview.wide ?? overview.camera)).distanceTo(new THREE.Vector3(...overview.target)) * back;
+  const fogNear = Math.max(extent * 2.4, reach * 1.15);
+  const fogFar = Math.max(extent * 6, reach * 2.6);
   return (
     <>
       <color attach="background" args={[PAPER]} />
-      <fog attach="fog" args={[PAPER, extent * 2.4, extent * 6]} />
+      <fog attach="fog" args={[PAPER, fogNear, fogFar]} />
       {/* Soft studio light: warm from above, bounced paper-light from below. */}
       <hemisphereLight args={["#fff4dc", "#d9c398", 1.25]} />
       <directionalLight position={[-3, -4, -2]} intensity={0.45} color="#f3e2c0" />
