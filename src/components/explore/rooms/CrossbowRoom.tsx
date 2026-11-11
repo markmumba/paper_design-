@@ -4,9 +4,15 @@ import { Edges } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { stepped } from "@/components/cues";
 import { sound } from "@/lib/sound";
+
+/** The winch drum turns 9 rad over a full draw and its ratchet wheel has 18 teeth: one click a tooth, winding only. */
+const ratchet = (draw: number, was: number) => {
+  if (draw > was && stepped(was * 9, draw * 9, (Math.PI * 2) / 18)) sound.tick();
+};
 import { ExploreRoom, FollowCamera, type RoomConfig, type Subject, type ViewDef } from "../ExploreRoom";
-import { Beam, INK, Look, Part, SPOT, gearGeometry, type Drive, type PartDef } from "../kit";
+import { Beam, INK, Look, Part, SPOT, Wheel, gearGeometry, type Drive, type PartDef } from "../kit";
 import { Cloud, Coastline, Field, Sky, Smoke, type SmokeHandle } from "../scenery";
 
 /*
@@ -25,6 +31,7 @@ const TIP = new THREE.Vector3(4.6, 0, -1.1); // right tip relative to the bow ce
 const NUT_REST = 3.2;
 const NUT_DRAWN = -1.8;
 const ARM_FLEX = 0.24;
+const WHEEL_SPLAY = 0.2; // radians each wheel leans in at the top
 
 const ARM_CURVE = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(2.6, 0, 0.45), TIP);
 
@@ -232,21 +239,14 @@ function CrossbowModel({ drive, boltOut }: { drive: Drive; boltOut?: Drive }) {
       </Part>
       <Part id="ruote">
         {wheels.map(([x, z], i) => (
-          <group key={i} position={[x, 0.62, z]} rotation={[0, 0, Math.sign(x) * -0.32]}>
-            <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-              <cylinderGeometry args={[0.6, 0.6, 0.16, 22]} />
-              <Look kind="darkwood" />
-            </mesh>
-            {[0, 1, 2].map((k) => (
-              <mesh key={k} rotation={[(k * Math.PI) / 3, 0, 0]}>
-                <boxGeometry args={[0.18, 1.05, 0.06]} />
-                <Look kind="wood" />
-              </mesh>
-            ))}
+          // Splayed as on the sheet: the feet stand wide and the tops lean in
+          // towards the bed, so the stance is broader than the carriage.
+          <group key={i} position={[x, 0.63, z]} rotation={[0, 0, Math.sign(x) * WHEEL_SPLAY]}>
+            <Wheel r={0.6} width={0.16} spokes={8} />
           </group>
         ))}
         {[-3, 0, 3].map((z) => (
-          <Beam key={z} from={[-0.9, 0.7, z]} to={[0.9, 0.7, z]} r={0.06} kind="iron" />
+          <Beam key={z} from={[-0.98, 0.63, z]} to={[0.98, 0.63, z]} r={0.06} kind="iron" />
         ))}
       </Part>
       <Part id="arco">
@@ -343,9 +343,10 @@ function RangeScene({ view }: { view: string }) {
   // The bolt leaves at the string's top speed: stroke × natural frequency.
   const speed = STROKE * Math.sqrt(K);
   const elevation = useMemo(() => aimElevation(speed), [speed]);
-  const sim = useRef({ t: 0, phase: "wind" as "wind" | "hold" | "loose" | "rest", x: 0, xv: 0, ratchet: 0, bz: 0, by: 0, bvz: 0, bvy: 0, flying: false, stuck: false, restT: 0 });
+  const sim = useRef({ t: 0, phase: "wind" as "wind" | "hold" | "loose" | "rest", x: 0, xv: 0, bz: 0, by: 0, bvz: 0, bvy: 0, flying: false, stuck: false, restT: 0 });
   const subject = useRef<Subject>({ pos: new THREE.Vector3(), yaw: 0, look: new THREE.Vector3() });
   const tmp = useRef(new THREE.Vector3());
+  const dir = useRef(new THREE.Vector3());
 
   useFrame((_, dtIn) => {
     const dt = Math.min(dtIn, 1 / 30);
@@ -353,12 +354,9 @@ function RangeScene({ view }: { view: string }) {
     s.t += dt;
     if (s.phase === "wind") {
       // The winch draws steadily; the ratchet clicks as it goes.
+      const was = s.x;
       s.x = Math.min(1, s.x + dt / 3);
-      s.ratchet += dt;
-      if (s.ratchet > 0.22) {
-        s.ratchet = 0;
-        sound.knock();
-      }
+      ratchet(s.x, was);
       if (s.x >= 1) {
         s.phase = "hold";
         s.t = 0;
@@ -382,6 +380,18 @@ function RangeScene({ view }: { view: string }) {
         s.by = LAUNCH_Y;
         s.bvz = speed * Math.cos(elevation);
         s.bvy = speed * Math.sin(elevation);
+        // The arms stop dead as the bolt leaves: heard on that frame, under the string's hum.
+        sound.thud(0.45);
+        // The arms slam forward and the carriage jolts: dust is thrown ahead
+        // from under each arm and out sideways from under the wheels.
+        const puffs = smoke.current;
+        if (puffs) {
+          const at = tmp.current;
+          for (const side of [1, -1]) {
+            puffs.burst(at.set(side * 2.6, 0.2, 4.4), { kind: "dust", size: 0.6, dir: dir.current.set(side * 0.5, 0.3, 1), speed: 6, spread: 0.5, count: 5 });
+            puffs.burst(at.set(side * 1.2, 0.15, 0), { kind: "dust", size: 0.4, dir: dir.current.set(side, 0.25, -0.2), speed: 3.5, spread: 0.5, count: 3 });
+          }
+        }
       }
       if (Math.abs(s.x) < 0.002 && Math.abs(s.xv) < 0.02) {
         s.x = 0;
@@ -417,7 +427,16 @@ function RangeScene({ view }: { view: string }) {
           s.stuck = true;
           if (hitTarget) s.bz = TARGET_Z - 0.3 - 3.35 + 0.9;
           sound.thud(hitTarget ? 1 : 0.6);
-          smoke.current?.emit(tmp.current.set(0, Math.max(0.3, s.by), s.bz + 3), 1.2);
+          // Straw and dust are knocked back out of the butt, the way the bolt
+          // came; a miss ploughs the field and throws earth on ahead.
+          smoke.current?.burst(tmp.current.set(0, Math.max(0.3, s.by), s.bz + 3.2), {
+            kind: "dust",
+            size: 0.8,
+            dir: dir.current.set(0, hitTarget ? 0.5 : 0.8, hitTarget ? -1 : 0.6),
+            speed: hitTarget ? 5 : 4,
+            spread: 0.6,
+            count: 7,
+          });
         }
         b.position.set(0, s.by, s.bz);
         b.rotation.x = -Math.atan2(s.bvy, s.bvz);
@@ -488,6 +507,7 @@ const CONFIG: RoomConfig = {
   Model: CrossbowModel,
   rest: 0,
   animate: (t) => 0.5 - 0.5 * Math.cos(t * 1.2),
+  voice: ratchet,
   play: ["tendi l'arco", "draw"],
   lift: -0.88,
   extent: 7,

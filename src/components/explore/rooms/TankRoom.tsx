@@ -3,9 +3,15 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { stepped } from "@/components/cues";
 import { sound } from "@/lib/sound";
+
+/** The wheels and gears are heard as they turn: a low wooden knock every eighth of a wheel's turn. */
+const rumble = (angle: number, was: number, k = 0.8) => {
+  if (stepped(was, angle, Math.PI / 4)) sound.tick(k, 0.45);
+};
 import { ExploreRoom, FollowCamera, type RoomConfig, type Subject, type ViewDef } from "../ExploreRoom";
-import { Beam, INK, Look, PAPER, Part, gearGeometry, type Drive, type PartDef } from "../kit";
+import { Beam, INK, Look, PAPER, Part, Wheel, gearGeometry, type Drive, type PartDef } from "../kit";
 import { Cloud, Coastline, Field, Sky, Smoke, type SmokeHandle } from "../scenery";
 
 /*
@@ -192,16 +198,7 @@ function TankModel({ drive }: { drive: Drive }) {
       <Part id="ruote">
         {WHEELS.map(([x, z], i) => (
           <group key={i} position={[x, WHEEL_R, z]} ref={(g) => void (wheels.current[i] = g)}>
-            <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-              <cylinderGeometry args={[WHEEL_R, WHEEL_R, 0.14, 24]} />
-              <Look kind="darkwood" />
-            </mesh>
-            {[0, 1, 2, 3].map((k) => (
-              <mesh key={k} rotation={[(k * Math.PI) / 4, 0, 0]}>
-                <boxGeometry args={[0.16, WHEEL_R * 1.8, 0.05]} />
-                <Look kind="wood" />
-              </mesh>
-            ))}
+            <Wheel r={WHEEL_R} width={0.14} spokes={8} />
           </group>
         ))}
         {[0.9, -0.9].map((z) => (
@@ -270,7 +267,7 @@ function MarchScene({ view }: { view: string }) {
   const tank = useRef<THREE.Group>(null);
   const smoke = useRef<SmokeHandle>(null);
   const drive = useRef(0);
-  const sim = useRef({ t: 0, v: 0, yaw: 0, x: -10, z: -6, rockX: 0, rockXV: 0, rockZ: 0, rockZV: 0, nextVolley: 5, shot: -1, shotAt: 0, trackDist: 0, filled: false });
+  const sim = useRef({ t: 0, v: 0, yaw: 0, x: -10, z: -6, rockX: 0, rockXV: 0, rockZ: 0, rockZV: 0, nextVolley: 5, shot: -1, shotAt: 0, trackDist: 0, dust: 0, filled: false });
   const subject = useRef<Subject>({ pos: new THREE.Vector3(), yaw: 0, look: new THREE.Vector3() });
   const lines = useMemo(() => [makeTrack(), makeTrack()], []);
   const left = useRef<THREE.Line>(null);
@@ -289,7 +286,9 @@ function MarchScene({ view }: { view: string }) {
     s.x += Math.sin(s.yaw) * s.v * dt;
     s.z += Math.cos(s.yaw) * s.v * dt;
     // Wheels roll without slipping: ω = v / r.
+    const rolled = drive.current;
     drive.current += (s.v / WHEEL_R) * dt;
+    rumble(drive.current, rolled, 0.6);
 
     // Volleys: the cannons fire in turn round the ring.
     if (s.t > s.nextVolley && s.shot < 0) {
@@ -301,7 +300,10 @@ function MarchScene({ view }: { view: string }) {
       const a = (s.shot / CANNONS) * Math.PI * 2 + Math.PI / CANNONS;
       const muzzle = g.localToWorld(tmp.current.v.set(Math.cos(a) * (CONE_R + 0.7), 0.82, Math.sin(a) * (CONE_R + 0.7)));
       smoke.current?.emit(muzzle, 1.4, true);
-      smoke.current?.emit(muzzle.clone().add(tmp.current.d.set(Math.cos(a), 0.1, Math.sin(a)).applyAxisAngle(new THREE.Vector3(0, 1, 0), s.yaw)), 2.2);
+      // Powder smoke jets out along the barrel, then stalls and climbs.
+      const along = tmp.current.d.set(Math.cos(a), 0, Math.sin(a)).transformDirection(g.matrixWorld);
+      along.y = 0.12;
+      smoke.current?.burst(muzzle, { size: 0.9, dir: along, speed: 8, spread: 0.3, count: 4 });
       sound.boom(0.55);
       // Recoil rocks the car away from the gun.
       s.rockXV -= Math.sin(a) * 0.5;
@@ -337,6 +339,18 @@ function MarchScene({ view }: { view: string }) {
         line.geometry.attributes.position.needsUpdate = true;
       });
       s.filled = true;
+    }
+    // The wheels grind dust out from under the skirt: more of it the faster
+    // the car rolls, left hanging low in its wake.
+    s.dust += s.v * dt;
+    if (s.dust > 0.55 && g) {
+      s.dust = 0;
+      const back = tmp.current.d.set(0, 0, -1).transformDirection(g.matrixWorld);
+      back.y = 0.3;
+      const side = Math.random() < 0.5 ? 1 : -1;
+      const at = g.localToWorld(tmp.current.v.set(side * (0.6 + Math.random() * 0.5), 0, -CONE_R * 0.9));
+      at.y = 0.15;
+      smoke.current?.burst(at, { kind: "dust", size: 0.5, dir: back, speed: 0.9 + s.v, spread: 0.6, count: 2 });
     }
     const sub = subject.current;
     sub.pos.set(s.x, 1.6, s.z);
@@ -377,6 +391,7 @@ const CONFIG: RoomConfig = {
   Model: TankModel,
   rest: 0,
   animate: (t) => t * 2.2,
+  voice: (a, was) => rumble(a, was),
   play: ["gira le manovelle", "crank"],
   lift: -0.9,
   extent: 6,

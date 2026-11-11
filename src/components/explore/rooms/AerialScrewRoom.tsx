@@ -3,6 +3,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { stepped } from "@/components/cues";
 import { sound } from "@/lib/sound";
 import { ExploreRoom, FollowCamera, type RoomConfig, type Subject, type ViewDef } from "../ExploreRoom";
 import { Figure } from "../figure";
@@ -240,6 +241,7 @@ function LiftScene({ view }: { view: string }) {
   const sim = useRef({ t: 0, omega: 0, spin: 0, y: 0, vy: 0, deck: 0, lastTurn: 0, puff: 0 });
   const subject = useRef<Subject>({ pos: new THREE.Vector3(), yaw: 0.3, look: new THREE.Vector3() });
   const tmp = useRef(new THREE.Vector3());
+  const dir = useRef(new THREE.Vector3());
 
   useFrame((_, dtIn) => {
     const dt = Math.min(dtIn, 1 / 30);
@@ -258,6 +260,7 @@ function LiftScene({ view }: { view: string }) {
     // Thrust, boosted near the ground by the cushion of air beneath (ground effect).
     const groundEffect = 1 + 0.35 * Math.exp(-s.y / 1.5);
     const thrust = KT * s.omega * s.omega * groundEffect;
+    const wasUp = s.y > 0;
     const onGround = s.y <= 0 && thrust < MASS * G;
     if (onGround) {
       s.y = 0;
@@ -266,6 +269,8 @@ function LiftScene({ view }: { view: string }) {
       s.vy += ((thrust - MASS * G) / MASS - 0.6 * s.vy) * dt;
       s.y = Math.max(0, s.y + s.vy * dt);
     }
+    // It comes down on the field again: heard on the frame the deck touches.
+    if (wasUp && s.y === 0) sound.thud(0.5);
     // The deck is pushed the other way by the crew (reaction torque).
     s.deck -= s.omega * 0.12 * dt;
     drive.current = s.spin;
@@ -275,17 +280,19 @@ function LiftScene({ view }: { view: string }) {
     }
     if (deck.current) deck.current.rotation.y = s.deck;
     deckDrive.current = s.deck;
-    // A whoosh for each half-turn of the screw.
-    if (s.spin - s.lastTurn > Math.PI && s.omega > 0.8) {
-      s.lastTurn = s.spin;
-      sound.flap(Math.min(1, s.omega / 9));
-    }
+    // A whoosh for each half-turn of the screw, counted on its own angle so
+    // the beat keeps step with the linen however fast it is spinning.
+    if (s.omega > 0.8 && stepped(s.lastTurn, s.spin, Math.PI)) sound.flap(Math.min(1, s.omega / 9));
+    s.lastTurn = s.spin;
     // Downwash raising dust from the field.
     s.puff += dt * s.omega * Math.exp(-s.y / 3);
-    if (s.puff > 1.2) {
+    if (s.puff > 0.8) {
       s.puff = 0;
+      // The air driven down hits the field and runs outwards along it, taking
+      // the dust with it in a ring: harder the faster the screw turns.
       const a = Math.random() * Math.PI * 2;
-      smoke.current?.emit(tmp.current.set(Math.cos(a) * 2.6, 0.3, Math.sin(a) * 2.6), 1.6);
+      const out = dir.current.set(Math.cos(a), 0.12, Math.sin(a));
+      smoke.current?.burst(tmp.current.set(Math.cos(a) * 2.4, 0.2, Math.sin(a) * 2.4), { kind: "dust", size: 1.2, dir: out, speed: 1 + s.omega * 0.6, spread: 0.35, count: 2 });
     }
     const sub = subject.current;
     sub.pos.set(0, s.y + 2.7, 0);
@@ -325,6 +332,9 @@ const CONFIG: RoomConfig = {
   Model: ScrewModel,
   rest: 0,
   animate: (t) => t * 1.4,
+  voice: (a, was) => {
+    if (stepped(was, a, Math.PI)) sound.flap(0.2);
+  },
   play: ["gira la vite", "turn"],
   lift: -0.88,
   extent: 6,

@@ -28,16 +28,28 @@ export type RoomConfig = {
   title: string;
   ariaLabel: string;
   parts: PartDef[];
-  overview: { target: Vec3; camera: Vec3 };
+  /** `wide`: where the camera stands back to when the model is exploded and nothing is picked. */
+  overview: { target: Vec3; camera: Vec3; wide?: Vec3 };
   /** The machine; `drive` animates it (wingbeat, spin, crank…). */
   Model: ComponentType<{ drive: Drive }>;
   rest: number;
   animate: (t: number) => number;
+  /**
+   * What the moving model sounds like on the drafting table. Called every
+   * frame it is playing with its drive value now, a frame ago and two frames
+   * ago, so a cue can be tied to the motion itself: a tooth passed, a turn
+   * completed, a stroke reversed.
+   */
+  voice?: (drive: number, was: number, before: number) => void;
   play: [string, string];
   /** Height of the model's base above the drafting table. */
   lift?: number;
   /** Size of the shadow camera around the model. */
   extent?: number;
+  /** Name for the whole thing in the parts list (default: the whole machine). */
+  whole?: string;
+  /** A line of credit or caveat shown under the model. */
+  note?: string;
   action: { label: string; Scene: ComponentType<{ view: string }>; views: ViewDef[]; hint?: string; start: Vec3; far?: number };
 };
 
@@ -99,7 +111,7 @@ function CameraRig({ parts, overview, selected, exploded, lift }: { parts: PartD
   const goal = useMemo(() => {
     const p = parts.find((x) => x.id === selected);
     const target = new THREE.Vector3(...(p ? p.target : overview.target));
-    const cam = new THREE.Vector3(...(p ? p.camera : overview.camera));
+    const cam = new THREE.Vector3(...(p ? p.camera : exploded && overview.wide ? overview.wide : overview.camera));
     // Follow the part to where the exploded view has moved it.
     if (p && exploded) {
       const off = new THREE.Vector3(...(p.follow ?? p.explode ?? [0, 0, 0]));
@@ -148,20 +160,35 @@ function AnatomyScene({
   exploded: boolean;
   labelEls: RefObject<Map<string, HTMLElement>>;
 }) {
-  const { Model, rest, animate, parts, overview, lift = 0.15, extent = 5 } = config;
+  const { Model, rest, animate, voice, parts, overview, lift = 0.15, extent = 5 } = config;
   const drive = useRef(rest);
+  const heard = useRef({ was: rest, before: rest });
   const explode = useRef(0);
   useFrame(({ clock }, dt) => {
     const target = playing ? animate(clock.elapsedTime) : rest;
     drive.current += (target - drive.current) * (playing ? 1 : 1 - Math.exp(-dt * 4));
+    // Heard only while it is being played, not while it eases back to rest.
+    const h = heard.current;
+    if (playing) voice?.(drive.current, h.was, h.before);
+    h.before = h.was;
+    h.was = drive.current;
     // Parts glide apart and back together with a soft ease.
     explode.current += ((exploded ? 1 : 0) - explode.current) * (1 - Math.exp(-dt * 3.5));
   });
   const select = useCallback((id: string) => onSelect(id), [onSelect]);
+  // The paper haze must begin beyond the model. On a narrow (portrait) screen
+  // the camera stands much further back to keep things framed (see CameraRig),
+  // and further still for an exploded view, so the haze is pushed out with it;
+  // otherwise the model dissolves into the paper and only its labels are left.
+  const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
+  const back = aspect < 1.2 ? Math.pow(1.2 / aspect, 0.75) : 1;
+  const reach = new THREE.Vector3(...(overview.wide ?? overview.camera)).distanceTo(new THREE.Vector3(...overview.target)) * back;
+  const fogNear = Math.max(extent * 2.4, reach * 1.15);
+  const fogFar = Math.max(extent * 6, reach * 2.6);
   return (
     <>
       <color attach="background" args={[PAPER]} />
-      <fog attach="fog" args={[PAPER, extent * 2.4, extent * 6]} />
+      <fog attach="fog" args={[PAPER, fogNear, fogFar]} />
       {/* Soft studio light: warm from above, bounced paper-light from below. */}
       <hemisphereLight args={["#fff4dc", "#d9c398", 1.25]} />
       <directionalLight position={[-3, -4, -2]} intensity={0.45} color="#f3e2c0" />
@@ -213,6 +240,8 @@ export function ExploreRoom({ config, onClose: done }: { config: RoomConfig; onC
   const [closing, setClosing] = useState(false);
   const onClose = useCallback(() => {
     setClosing(true);
+    // Nothing from the scene rings on over the closing page.
+    sound.hush();
     sound.pageFlip();
     window.setTimeout(done, 480);
   }, [done]);
@@ -292,7 +321,11 @@ export function ExploreRoom({ config, onClose: done }: { config: RoomConfig; onC
             <button
               key={id}
               type="button"
-              onClick={() => setMode(id)}
+              onClick={() => {
+                // The other scene's sounds stop with it.
+                if (id !== mode) sound.hush();
+                setMode(id);
+              }}
               className={`rounded-full px-4 py-1.5 tracking-widest transition-colors ${mode === id ? "bg-ink text-paper" : "text-sepia hover:text-ink"}`}
             >
               {label}
@@ -310,6 +343,8 @@ export function ExploreRoom({ config, onClose: done }: { config: RoomConfig; onC
           // PCF filtering: three.js removed the soft variant R3F asks for by default.
           shadows="percentage"
           dpr={[1, 2]}
+          // The scene stops with the room, so nothing in it fires a sound while the page shuts.
+          frameloop={closing ? "never" : "always"}
           camera={
             mode === "anatomia"
               ? { position: config.overview.camera.map((v) => v * 2.3) as unknown as Vec3, fov: 38, near: 0.05, far: 200 }
@@ -357,7 +392,7 @@ export function ExploreRoom({ config, onClose: done }: { config: RoomConfig; onC
                 onClick={() => choose(null)}
                 className={`shrink-0 text-left font-caps text-sm tracking-widest max-sm:rounded-full max-sm:border max-sm:border-sepia/40 max-sm:bg-paper/85 max-sm:px-3 max-sm:py-1 ${selected === null ? "text-rust" : "text-sepia hover:text-ink"}`}
               >
-                Tutta la macchina
+                {config.whole ?? "Tutta la macchina"}
               </button>
               {parts.map((p) => (
                 <button
@@ -422,6 +457,7 @@ export function ExploreRoom({ config, onClose: done }: { config: RoomConfig; onC
               </aside>
             )}
             <p className="pointer-events-none absolute bottom-4 left-4 hidden font-script text-lg text-faded sm:block">drag to turn · scroll to zoom · click a part</p>
+            {config.note && <p className="pointer-events-none absolute top-3 right-4 z-10 hidden max-w-xs text-right text-xs text-faded italic sm:block">{config.note}</p>}
           </>
         ) : (
           <>

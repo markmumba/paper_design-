@@ -1,6 +1,8 @@
 "use client";
 
 import { motion, useTransform } from "motion/react";
+import { stepped, useCues } from "@/components/cues";
+import { sound } from "@/lib/sound";
 import { Dim, Fibers, Ink, InkSet, LivePath, Micro, Note, TG, Tone } from "@/components/ink";
 import type { MachineProps } from "@/components/Exhibit";
 import { circle, easeInOut, ellipse, halfEllipse, hatch, line, range } from "@/lib/geo";
@@ -120,6 +122,14 @@ const radius = dimension(CX, 336, CX + 138, 336, 22);
 export function AerialScrew({ p }: MachineProps) {
   const phase = (v: number) => Math.pow(range(v, 0.36, 1), 1.5) * Math.PI * 16;
   const reveal = (v: number) => range(v, 0.1, 0.3);
+
+  // The linen sweeps the air twice a turn: a whoosh for each half-turn of the
+  // screw's own angle, louder the faster it is being spun.
+  useCues(p, (v, was, speed) => {
+    if (!stepped(phase(was), phase(v), Math.PI)) return;
+    const turning = (Math.abs(phase(v) - phase(was)) / Math.max(1e-6, Math.abs(v - was))) * speed; // radians per second
+    sound.flap(Math.min(1, turning / 14));
+  });
 
   // Compute the helix once per frame and fan it out to four paths.
   const strokes = useTransform(p, (v) => helix(phase(v), reveal(v)));

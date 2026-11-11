@@ -1,9 +1,16 @@
+"use client";
+
+import dynamic from "next/dynamic";
 import type { ExhibitData } from "@/components/Exhibit";
 import { HeartValve } from "./drawings/HeartValve";
 import { Skull } from "./drawings/Skull";
 import { Spine } from "./drawings/Spine";
 import { Vitruvian } from "./drawings/Vitruvian";
 import { SHEET, STUDIES } from "./data";
+
+// The 3D room is heavy (three.js and the bone meshes), so it loads only when opened.
+const ExploreSkull = dynamic(() => import("./skull3d/SkullRoom"), { ssr: false });
+const ExploreSpine = dynamic(() => import("./spine3d/SpineRoom"), { ssr: false });
 
 const scanOf = (id: string) => {
   const s = STUDIES.find((x) => x.id === id)!;
@@ -57,6 +64,7 @@ export const FOLIOS: ExhibitData[] = [
     body: "Among his earliest anatomy, two decades before his great dissections: the skull from the front, its left half cut away down the middle to show the hollows behind the face, the eye and the cheek. On a sheet from the same set he placed a skull where three lines at right angles meet, a way of locating what lies inside.",
     steps: ["His lines return, stroke by stroke", "The midline between the halves", "The hollows behind the face"],
     Machine: Skull,
+    Explore: ExploreSkull,
     verdict: {
       question: "Was he right?",
       answer: "A first step",
@@ -79,6 +87,7 @@ export const FOLIOS: ExhibitData[] = [
     body: "The column from the side and from the front: seven vertebrae of the neck, twelve of the back, five of the loins, then the fused sacrum. His own letters down the side mark where each region ends.",
     steps: ["His lines return, stroke by stroke", "Neck, back, loins and sacrum", "His one slip: a spine too many"],
     Machine: Spine,
+    Explore: ExploreSpine,
     verdict: {
       question: "Was he right?",
       answer: "Yes",

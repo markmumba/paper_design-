@@ -12,23 +12,33 @@ export function SoundToggle({ onEnable }: { onEnable?: () => void }) {
   const on = useSyncExternalStore(sound.subscribe, sound.getSnapshot, sound.getServerSnapshot);
 
   useEffect(() => {
-    const first = () => {
-      if (sound.enabled) {
-        sound.unlock();
-        window.setTimeout(() => onEnable?.(), 60);
-      }
-    };
-    window.addEventListener("pointerdown", first, { once: true });
-    window.addEventListener("keydown", first, { once: true });
+    // Browsers only start audio from a real gesture, and not every event
+    // counts as one (a touch that turns into a scroll does not). So keep
+    // listening until the context is actually running, then announce it once.
+    const events = ["pointerdown", "pointerup", "keydown"] as const;
+    let done = false;
+    const stop = () => events.forEach((e) => window.removeEventListener(e, first));
+    function first(e: Event) {
+      // The toggle's own click decides for itself.
+      if (!sound.enabled || (e.target instanceof Element && e.target.closest("[data-sound-toggle]"))) return;
+      void sound.unlock().then((running) => {
+        if (!running || done) return;
+        done = true;
+        stop();
+        onEnable?.();
+      });
+    }
+    events.forEach((e) => window.addEventListener(e, first));
     return () => {
-      window.removeEventListener("pointerdown", first);
-      window.removeEventListener("keydown", first);
+      done = true;
+      stop();
     };
   }, [onEnable]);
 
   return (
     <button
       type="button"
+      data-sound-toggle
       aria-pressed={on}
       aria-label={on ? "Turn sound off" : "Turn sound on"}
       onClick={async (e) => {
