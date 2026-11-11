@@ -218,5 +218,5 @@ export const CONTEXT_SOURCES: Source[] = [
   { label: "Royal Collection: Leonardo’s study of anatomy", href: "https://www.rct.uk/collection/stories/leonardo-in-the-royal-collection/leonardos-study-of-anatomy" },
   { label: "Wikipedia: Vitruvian Man", href: "https://en.wikipedia.org/wiki/Vitruvian_Man" },
   // The bones of the 3D skull and spine (Folios II and III): a modern model, reduced for the web.
-  { label: "BodyParts3D, © The Database Center for Life Science, CC Attribution-Share Alike 2.1 Japan (3D skull and spine)", href: "https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html" },
+  { label: "BodyParts3D, © The Database Center for Life Science, CC Attribution-Share Alike 2.1 Japan (3D skeleton, skull, spine and heart; meshes from the Kevin-Mattheus-Moerman/BodyParts3D mirror, simplified for the web)", href: "https://dbarchive.biosciencedbc.jp/en/bodyparts3d/lic.html" },
 ];

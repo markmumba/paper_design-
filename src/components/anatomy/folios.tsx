@@ -11,6 +11,8 @@ import { SHEET, STUDIES } from "./data";
 // The 3D room is heavy (three.js and the bone meshes), so it loads only when opened.
 const ExploreSkull = dynamic(() => import("./skull3d/SkullRoom"), { ssr: false });
 const ExploreSpine = dynamic(() => import("./spine3d/SpineRoom"), { ssr: false });
+const ExploreBody = dynamic(() => import("./body3d/BodyRoom"), { ssr: false });
+const ExploreHeart = dynamic(() => import("./heart3d/HeartRoom"), { ssr: false });
 
 const scanOf = (id: string) => {
   const s = STUDIES.find((x) => x.id === id)!;
@@ -42,6 +44,7 @@ export const FOLIOS: ExhibitData[] = [
     body: "A Roman architect, Vitruvius, wrote that a well-made man fits both a circle and a square. Others had tried to draw it and failed. Leonardo made it work by drawing the man twice, in two poses, with a different centre for each shape.",
     steps: ["His lines return, stroke by stroke", "The circle, centred on the navel", "The square, centred lower down"],
     Machine: Vitruvian,
+    Explore: ExploreBody,
     verdict: {
       question: "Was he right?",
       answer: "An ideal, not a man",
@@ -110,6 +113,7 @@ export const FOLIOS: ExhibitData[] = [
     body: "Where blood leaves the heart, three cusps open and close. Leonardo watched flow through a model of the valve and saw the blood curl into eddies in the pouches behind the cusps, and reasoned that those eddies help the valve shut.",
     steps: ["His lines return, stroke by stroke", "The eddies he drew begin to turn", "Where they help the valve shut"],
     Machine: HeartValve,
+    Explore: ExploreHeart,
     verdict: {
       question: "Was he right?",
       answer: "Yes",

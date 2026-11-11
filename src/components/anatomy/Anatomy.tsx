@@ -292,8 +292,9 @@ export function Anatomy() {
           red marks, brackets and moving eddies laid over them are ours, and each folio’s toggle shows the whole
           sheet. The Italian captions are ours, written in his manner, not his words. The
           photographs of his sheets come from the institutions that hold them, shared as public domain on Wikimedia
-          Commons. The red measurements are ours. The skull and spine you can take apart in three dimensions are not his: they
-          are a modern anatomical model, BodyParts3D, simplified for the web and shared under the same licence.
+          Commons. The red measurements are ours. The skeleton, skull, spine and heart you can take apart in three
+          dimensions are not his: they are a modern anatomical model, BodyParts3D, simplified for the web and shared
+          under the same licence. The glass valve in the heart’s room is ours.
         </p>
         <SourceLinks sources={allSources} />
       </section>
