@@ -1,11 +1,12 @@
 "use client";
 
-import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useMemo, useRef, type ReactNode } from "react";
 import * as THREE from "three";
-import { ExploreRoom, FollowCamera, type RoomConfig, type Subject, type ViewDef } from "@/components/explore/ExploreRoom";
-import { PAPER, Part, SPOT, useExplode, type Drive, type PartDef, type Vec3 } from "@/components/explore/kit";
-import { add, Bone, BONES_CREDIT, CutContext, Drift, useBones, type Manifest, type MeshInfo } from "../bones3d";
+import { ExploreRoom, type RoomConfig } from "@/components/explore/ExploreRoom";
+import { Part, SPOT, useExplode, type Drive, type PartDef, type Vec3 } from "@/components/explore/kit";
+import { add, Bone, BONES_CREDIT, Drift, useBones, type Manifest, type MeshInfo } from "../bones3d";
+import { LIVING_VIEWS, LivingDrawing } from "./LivingDrawing";
 import data from "./manifest.json";
 
 const manifest: Manifest = data;
@@ -285,41 +286,9 @@ function SkullModel({ drive }: { drive: Drive }) {
   );
 }
 
-// ── La metà segata: his own section ───────────────────────────────────────────
-const VIEWS: ViewDef[] = [
-  { id: "fronte", it: "Di fronte", en: "From the front", offset: [0.9, 0.3, 4.9] },
-  { id: "taglio", it: "Nel taglio", en: "Into the cut", offset: [4.7, 0.4, 1.5] },
-  { id: "sopra", it: "Da sopra", en: "From above", offset: [1.8, 4.6, 2.0] },
-  { id: "libera", it: "Libera", en: "Free", offset: [4, 1.5, 4.5] },
-];
-
-function SawnScene({ view }: { view: string }) {
-  const bones = useBones(URL, manifest);
-  // The renderer only honours per-material cutting planes when told to.
-  const get = useThree((s) => s.get);
-  useEffect(() => {
-    const renderer = get().gl;
-    const was = renderer.localClippingEnabled;
-    renderer.localClippingEnabled = true;
-    return () => {
-      renderer.localClippingEnabled = was;
-    };
-  }, [get]);
-  // The saw runs down the middle and the skull's left half is lifted away.
-  const cut = useMemo(() => [new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0)], []);
-  const subject = useRef<Subject>({ pos: new THREE.Vector3(0, 0, 0), yaw: 0, look: new THREE.Vector3(0, 0, 0.1) });
-  return (
-    <>
-      <color attach="background" args={[PAPER]} />
-      <hemisphereLight args={["#fff4dc", "#d9c398", 1.3]} />
-      <directionalLight position={[5, 4, 3]} intensity={1.5} color="#fff1d6" />
-      <directionalLight position={[-3, -2, 4]} intensity={0.5} color="#f3e2c0" />
-      <CutContext.Provider value={cut}>
-        {bones && [...bones.entries()].map(([id, geo]) => <Bone key={id} geo={geo} />)}
-      </CutContext.Provider>
-      <FollowCamera subject={subject} view={view} views={VIEWS} minDistance={2} maxDistance={14} />
-    </>
-  );
+// ── Il disegno vivo: his page of 1489, coming alive (see ./LivingDrawing) ──────
+function LivingScene({ view }: { view: string }) {
+  return <LivingDrawing view={view} url={URL} manifest={manifest} />;
 }
 
 const CONFIG: RoomConfig = {
@@ -338,12 +307,12 @@ const CONFIG: RoomConfig = {
   extent: 3.2,
   note: BONES_CREDIT,
   action: {
-    label: "La metà segata",
-    Scene: SawnScene,
-    views: VIEWS,
-    start: [3, 1.5, 9],
+    label: "Il disegno vivo",
+    Scene: LivingScene,
+    views: LIVING_VIEWS,
+    start: [0, 0, 9],
     far: 100,
-    hint: "his own section of 1489: the left half sawn away, to see the hollows behind the face",
+    hint: "his own page of 1489 comes alive: the skull rises out of his ink, cut as he cut it, and is drawn again in his left-handed hatching as it turns",
   },
 };
 

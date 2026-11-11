@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import type { ExhibitData } from "@/components/Exhibit";
 import { HeartValve } from "./drawings/HeartValve";
 import { Skull } from "./drawings/Skull";
+import { Shoulder } from "./drawings/Shoulder";
 import { Spine } from "./drawings/Spine";
 import { Vitruvian } from "./drawings/Vitruvian";
 import { SHEET, STUDIES } from "./data";
@@ -11,6 +12,9 @@ import { SHEET, STUDIES } from "./data";
 // The 3D room is heavy (three.js and the bone meshes), so it loads only when opened.
 const ExploreSkull = dynamic(() => import("./skull3d/SkullRoom"), { ssr: false });
 const ExploreSpine = dynamic(() => import("./spine3d/SpineRoom"), { ssr: false });
+const ExploreBody = dynamic(() => import("./body3d/BodyRoom"), { ssr: false });
+const ExploreHeart = dynamic(() => import("./heart3d/HeartRoom"), { ssr: false });
+const ExploreArm = dynamic(() => import("./arm3d/ArmRoom"), { ssr: false });
 
 const scanOf = (id: string) => {
   const s = STUDIES.find((x) => x.id === id)!;
@@ -42,6 +46,7 @@ export const FOLIOS: ExhibitData[] = [
     body: "A Roman architect, Vitruvius, wrote that a well-made man fits both a circle and a square. Others had tried to draw it and failed. Leonardo made it work by drawing the man twice, in two poses, with a different centre for each shape.",
     steps: ["His lines return, stroke by stroke", "The circle, centred on the navel", "The square, centred lower down"],
     Machine: Vitruvian,
+    Explore: ExploreBody,
     verdict: {
       question: "Was he right?",
       answer: "An ideal, not a man",
@@ -110,6 +115,7 @@ export const FOLIOS: ExhibitData[] = [
     body: "Where blood leaves the heart, three cusps open and close. Leonardo watched flow through a model of the valve and saw the blood curl into eddies in the pouches behind the cusps, and reasoned that those eddies help the valve shut.",
     steps: ["His lines return, stroke by stroke", "The eddies he drew begin to turn", "Where they help the valve shut"],
     Machine: HeartValve,
+    Explore: ExploreHeart,
     verdict: {
       question: "Was he right?",
       answer: "Yes",
@@ -118,6 +124,29 @@ export const FOLIOS: ExhibitData[] = [
       right: "That swirling blood in the sinuses plays a part in closing the valve.",
       test: "In 2014 an Oxford team used 4D MRI on living hearts: “Flow vortices in the aortic root: in vivo 4D-MRI confirms predictions of Leonardo da Vinci”, European Heart Journal.",
       testSource: { label: "Bissell et al., 2014", href: "https://ora.ox.ac.uk/objects/uuid:1a9e3be1-9102-4975-8613-3c26a71b6884" },
+    },
+  },
+  {
+    numeral: "V",
+    title: "The Shoulder and Arm",
+    italian: "La spalla e il braccio",
+    year: "c. 1510–11",
+    source: "Leonardo’s own lines, traced from the muscles of the shoulder, arm and neck (Royal Collection, RCIN 919008, verso) and redrawn stroke by stroke; the red marks are ours.",
+    note: "Gira la spalla e mostrala in otto aspetti",
+    noteEn: "“Turn the shoulder and show it in eight views.”",
+    quote: { by: "ours" },
+    drawingLabel: "His lines, redrawn",
+    scan: scanOf("shoulder"),
+    body: "The same shoulder four times, turned a step further each time from the front towards the back. With a second sheet the sequence runs to eight views, and in the corner he drew a star of eight points to plan them: a way of showing the body in the round that no single drawing could.",
+    steps: ["His lines return, stroke by stroke", "Four views, turning round", "His star of eight views"],
+    Machine: Shoulder,
+    Explore: ExploreArm,
+    verdict: {
+      question: "Was he right?",
+      answer: "Yes, nearly all",
+      tone: "yes",
+      why: "The Royal Collection notes that every surface muscle of the upper arm and shoulder on these sheets can be identified. His one quirk: he divided the deltoid over the shoulder into separate pieces of his own.",
+      right: "The muscles themselves, and the method: turning one subject through eight views to show it whole.",
     },
   },
 ];

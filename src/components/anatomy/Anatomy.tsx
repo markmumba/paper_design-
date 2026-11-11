@@ -164,7 +164,7 @@ function MeasureTheSheet() {
 
 /** Two more of his sheets, shown as they are. */
 function MoreSheets() {
-  const more = STUDIES.filter((s) => s.id === "shoulder" || s.id === "womb");
+  const more = STUDIES.filter((s) => s.id === "womb");
   return (
     <section className="mx-auto mt-28 max-w-7xl px-4 md:px-10" aria-label="More of his anatomical sheets">
       <p className="font-caps text-sm tracking-[0.3em] text-rust uppercase">Altri fogli · More of his sheets</p>
@@ -292,8 +292,9 @@ export function Anatomy() {
           red marks, brackets and moving eddies laid over them are ours, and each folio’s toggle shows the whole
           sheet. The Italian captions are ours, written in his manner, not his words. The
           photographs of his sheets come from the institutions that hold them, shared as public domain on Wikimedia
-          Commons. The red measurements are ours. The skull and spine you can take apart in three dimensions are not his: they
-          are a modern anatomical model, BodyParts3D, simplified for the web and shared under the same licence.
+          Commons. The red measurements are ours. The skeleton, skull, spine, heart, shoulder and arm you can take apart in three
+          dimensions are not his: they are a modern anatomical model, BodyParts3D, simplified for the web and shared
+          under the same licence. The glass valve in the heart’s room is ours.
         </p>
         <SourceLinks sources={allSources} />
       </section>
