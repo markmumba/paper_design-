@@ -433,6 +433,10 @@ const CONFIG: RoomConfig = {
   Model: Ornithopter3D,
   rest: 0.14,
   animate: (t) => 0.14 + 0.38 * Math.sin(t * 1.7),
+  // A wingbeat as the wings turn over at the top of their swing and start down.
+  voice: (a, was, before) => {
+    if (was > before && a <= was) sound.flap(0.5);
+  },
   play: ["batti le ali", "flap"],
   action: { label: "In volo", Scene: FlightScene, views: VIEWS, start: [10, 9, 0] },
 };

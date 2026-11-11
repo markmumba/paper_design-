@@ -1,6 +1,8 @@
 "use client";
 
 import { motion, useTransform } from "motion/react";
+import { fell, rose, stepped, useCues } from "@/components/cues";
+import { sound } from "@/lib/sound";
 import { Dim, Fibers, Ink, InkSet, LivePath, Micro, Note, TG, Tone } from "@/components/ink";
 import type { MachineProps } from "@/components/Exhibit";
 import { circle, easeIn, hatch, line, range, spokes } from "@/lib/geo";
@@ -115,6 +117,18 @@ const armDim = (() => {
 })();
 
 export function Trebuchet({ p }: MachineProps) {
+  useCues(p, (v, was, speed) => {
+    // The winch winds the arm down the last few degrees, a click at a time.
+    if (Math.max(v, was) > 0.36 && Math.min(v, was) < 0.5 && stepped(was, v, 0.0175, 0.36)) sound.tick(0.8, 0.8);
+    // The catch is knocked out and the weight starts to fall.
+    if (rose(was, v, 0.5)) sound.knock();
+    // The arm whips over, fastest just before it lets go.
+    if (rose(was, v, 0.575) || fell(was, v, 0.575)) sound.whoosh(Math.min(1, speed / 0.25), 0.4);
+    // The sling opens and the stone is away.
+    if (rose(was, v, RELEASE)) sound.twang(0.7);
+    // The arm overshoots and rocks back on its axle.
+    if (rose(was, v, 0.64)) sound.creak(0.9);
+  });
   const arm = useTransform(p, (v) => `translate(${PX} ${PY}) rotate(${pose(v).arm})`);
   const weight = useTransform(p, (v) => {
     const pt = points(v);

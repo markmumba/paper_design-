@@ -365,9 +365,13 @@ function Finis() {
 
 export function Museum() {
   const last = useRef(-1);
-  // Turning to a new folio sounds like turning a page.
+  // Turning to a new folio sounds like turning a page. Not while the hero is
+  // still over the first one: it lies under the desk from the start, and is
+  // reached by falling through the orrery, not by turning.
   const onActive = useCallback((i: number) => {
-    if (i !== last.current) sound.pageFlip();
+    const hero = document.getElementById("hero");
+    const underHero = !!hero && window.scrollY < hero.offsetTop + hero.offsetHeight - window.innerHeight;
+    if (last.current !== -1 && i !== last.current && !underHero) sound.pageFlip();
     last.current = i;
     activeStore.set(i);
   }, []);

@@ -4,114 +4,35 @@ import { Edges } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { stepped } from "@/components/cues";
 import { sound } from "@/lib/sound";
 import { ExploreRoom, FollowCamera, type RoomConfig, type Subject, type ViewDef } from "../ExploreRoom";
 import { Beam, INK, Look, Part, SPOT, type Drive, type PartDef } from "../kit";
 import { Cloud, Coastline, Field, Sky, Smoke, type SmokeHandle } from "../scenery";
+import { AXLE, COCK, cocked, HC, LA, LB, points, SL, step, STONE_Y } from "../trebuchet";
 
 /*
  * Folio V in three dimensions: the trebuchet.
  *
- * The throw is simulated, not animated. A rigid arm on an axle, a hinged
- * counterweight of 1.8 tonnes, a 4 m sling and an 18 kg stone are particles
- * held by distance constraints (verlet integration). Gravity pulls the
- * counterweight down, the arm whips over, the sling swings out behind it and
- * slings the stone faster than the arm alone could; it lets go when the stone
- * is flying about 40° upward, and the stone follows a ballistic arc with air
- * drag. The castle is placed where that very stone comes down.
+ * The throw is simulated, not animated: see ../trebuchet for the dynamics.
+ * A 260 kg arm on an axle, a hinged counterweight of 1.8 tonnes, a 4 m sling
+ * and an 18 kg stone. The counterweight falls, the sling drags the stone
+ * back along its trough, lifts it and whips it over the top; the sling's loop
+ * slips off its prong, and from that instant nothing joins the stone to the
+ * machine. It flies about 185 m in six seconds, losing a little to the air.
+ * The castle is placed where that very stone comes down.
  */
 
-const P = new THREE.Vector2(0, 4.2); // axle, as (z, y)
-const LA = 5.6; // long arm
-const LB = 1.5; // short arm
-const HC = 1.1; // counterweight hanger
-const SL = 4.0; // sling
-const COCK = (215 * Math.PI) / 180;
-const RELEASE = 40; // degrees: the sling lets go when the stone climbs at this angle
-const STONE_Y = 0.3;
-
-type Pt = { z: number; y: number; pz: number; py: number; w: number };
-type Sim = { A: Pt; B: Pt; C: Pt; S: Pt; released: boolean };
-const pt = (z: number, y: number, m: number): Pt => ({ z, y, pz: z, py: y, w: 1 / m });
-
-/** The cocked pose: arm pulled down at the back, stone in its trough. */
-function cocked(): Sim {
-  const A = pt(P.x + LA * Math.cos(COCK), P.y + LA * Math.sin(COCK), 25);
-  const B = pt(P.x + LB * Math.cos(COCK + Math.PI), P.y + LB * Math.sin(COCK + Math.PI), 25);
-  const C = pt(B.z, B.y - HC, 1800);
-  const S = pt(A.z + 3.9, STONE_Y, 18);
-  return { A, B, C, S, released: false };
-}
-
-const SUB = 16;
-const DT = 1 / 60 / SUB;
-
-function fixTo(p: Pt, L: number) {
-  const dz = p.z - P.x;
-  const dy = p.y - P.y;
-  const d = Math.hypot(dz, dy);
-  p.z = P.x + (dz * L) / d;
-  p.y = P.y + (dy * L) / d;
-}
-function link(a: Pt, b: Pt, L: number, rope = false) {
-  const dz = b.z - a.z;
-  const dy = b.y - a.y;
-  const d = Math.hypot(dz, dy);
-  if (rope && d <= L) return;
-  const k = (d - L) / d / (a.w + b.w);
-  a.z += dz * k * a.w;
-  a.y += dy * k * a.w;
-  b.z -= dz * k * b.w;
-  b.y -= dy * k * b.w;
-}
-
-/** Advance one 1/60 s tick. Returns true at the moment of release. */
-function tick(s: Sim) {
-  let let_go = false;
-  const parts = [s.A, s.B, s.C, s.S];
-  for (let i = 0; i < SUB; i++) {
-    for (const p of parts) {
-      // Very light damping: axle friction for the arm, air drag for the stone in flight.
-      const k = p === s.S && s.released ? 0.99995 : 0.99999;
-      const vz = p.z - p.pz;
-      const vy = p.y - p.py;
-      p.pz = p.z;
-      p.py = p.y;
-      p.z += vz * k;
-      p.y += vy * k - 9.81 * DT * DT;
-    }
-    for (let it = 0; it < 10; it++) {
-      fixTo(s.A, LA);
-      fixTo(s.B, LB);
-      link(s.A, s.B, LA + LB);
-      link(s.B, s.C, HC);
-      if (!s.released) link(s.A, s.S, SL, true);
-      if (!s.released && s.S.y < STONE_Y) {
-        s.S.y = STONE_Y;
-        s.S.py = s.S.y;
-      }
-    }
-    if (!s.released) {
-      const vz = (s.S.z - s.S.pz) / DT;
-      const vy = (s.S.y - s.S.py) / DT;
-      const ang = (Math.atan2(vy, vz) * 180) / Math.PI;
-      if (vz > 0 && Math.abs(ang - RELEASE) < 4 && s.S.y > 3) {
-        s.released = true;
-        let_go = true;
-      }
-    }
-  }
-  return let_go;
-}
+const P = new THREE.Vector2(AXLE.z, AXLE.y); // axle, as (z, y)
 
 /** Run a whole throw once to learn where the stone flies (to build the castle there). */
 function rehearse() {
   const s = cocked();
   const path: [number, number][] = [];
   for (let i = 0; i < 60 * 14; i++) {
-    tick(s);
-    if (s.released) path.push([s.S.z, s.S.y]);
-    if (s.released && s.S.y <= 0) break;
+    step(s, 1 / 60);
+    if (s.phase === "flight") path.push([s.stone.z, s.stone.y]);
+    if (s.phase === "flight" && s.stone.y <= 0) break;
   }
   // The wall stands where the falling stone is still at mid height.
   let wallZ = path.length ? path[path.length - 1][0] : 200;
@@ -207,7 +128,13 @@ function poseFor(theta: number) {
   return { A, B, C, S };
 }
 
-export type Pose = { A: { z: number; y: number }; B: { z: number; y: number }; C: { z: number; y: number }; S: { z: number; y: number }; stone: boolean };
+type ZY = { z: number; y: number };
+/**
+ * A: arm tip. B: counterweight hinge. C: foot of the hanger, where the box
+ * hangs. S: the sling's free end. `rock` is the stone once it has left the
+ * sling (until then it rides at S); `stone` is whether it is still in one piece.
+ */
+export type Pose = { A: ZY; B: ZY; C: ZY; S: ZY; rock?: ZY; stone: boolean };
 
 function TrebuchetModel({ drive, pose }: { drive: Drive; pose?: { current: Pose } }) {
   const arm = useRef<THREE.Group>(null);
@@ -227,9 +154,14 @@ function TrebuchetModel({ drive, pose }: { drive: Drive; pose?: { current: Pose 
     const p = pose?.current ?? { ...poseFor(COCK - drive.current * 2.35), stone: true };
     const theta = Math.atan2(p.A.y - P.y, p.A.z - P.x);
     if (arm.current) arm.current.rotation.x = -theta;
-    weight.current?.position.set(0, p.C.y, p.C.z);
+    if (weight.current) {
+      // The box is rigid with its hanger, so it swings with it.
+      weight.current.position.set(0, p.C.y, p.C.z);
+      weight.current.rotation.x = Math.atan2(p.B.z - p.C.z, p.B.y - p.C.y);
+    }
     if (stone.current) {
-      stone.current.position.set(0, p.S.y, p.S.z);
+      const at = p.rock ?? p.S;
+      stone.current.position.set(0, at.y, at.z);
       stone.current.visible = p.stone;
     }
     const set = (l: THREE.Line | null, a: { z: number; y: number }, b: { z: number; y: number }) => {
@@ -240,8 +172,8 @@ function TrebuchetModel({ drive, pose }: { drive: Drive; pose?: { current: Pose 
       pos.needsUpdate = true;
     };
     set(hanger.current, p.B, p.C);
-    // After the release the empty sling trails from the tip.
-    set(sling.current, p.A, p.stone ? p.S : { z: p.A.z - Math.cos(theta) * 0.4, y: p.A.y - SL * 0.6 });
+    // The sling runs to its own end, never to a stone that has left it.
+    set(sling.current, p.A, p.S);
   });
   const rails = [1.0, -1.0];
   return (
@@ -382,15 +314,33 @@ function Castle({ z }: { z: number }) {
 
 const DEBRIS = 8;
 
+const TRAIL = 420;
+const smooth = (k: number) => k * k * (3 - 2 * k);
+/** The same direction, as the angle nearest to `near`. */
+const nearest = (a: number, near: number) => near + Math.atan2(Math.sin(a - near), Math.cos(a - near));
+
 function ThrowScene({ view }: { view: string }) {
   const { wallZ } = useMemo(() => rehearse(), []);
   const smoke = useRef<SmokeHandle>(null);
   const drive = useRef(0);
   const pose = useRef<Pose>({ ...poseFor(COCK), stone: true });
-  const sim = useRef({ s: cocked(), phase: "ready" as "ready" | "throw" | "after" | "cock", t: 0, acc: 0, from: poseFor(COCK) as Pose | ReturnType<typeof poseFor> });
+  const sim = useRef({ s: cocked(), phase: "ready" as "ready" | "throw" | "after" | "cock", t: 0, acc: 0, lastZ: 0, from: [COCK, -Math.PI / 2, -Math.PI / 2] as [number, number, number] });
   const chunks = useRef<THREE.Group>(null);
   const debris = useRef(Array.from({ length: DEBRIS }, () => ({ p: new THREE.Vector3(), v: new THREE.Vector3(), on: false })));
   const subject = useRef<Subject>({ pos: new THREE.Vector3(), yaw: 0, look: new THREE.Vector3() });
+  // The stone's path, pricked out in ink as it flies, the way Leonardo drew his shots.
+  const trail = useMemo(() => {
+    const geo = new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(new Float32Array(TRAIL * 3), 3));
+    geo.setDrawRange(0, 0);
+    const dots = new THREE.Points(geo, new THREE.PointsMaterial({ color: INK, size: 2.5, sizeAttenuation: false, transparent: true, opacity: 0.55 }));
+    dots.frustumCulled = false;
+    return dots;
+  }, []);
+  const dots = useRef<THREE.Points>(null);
+  const pricked = useRef({ n: 0, every: 0 });
+  // What the sound cues need to remember: where the sling's end was, how the
+  // arm and the box were last swinging and how hard, and the winding's progress.
+  const heard = useRef({ y: 0, w: [0, 0], peak: [0, 0], theta: COCK, laid: true });
 
   useFrame((_, dtIn) => {
     const dt = Math.min(dtIn, 1 / 20);
@@ -400,54 +350,119 @@ function ThrowScene({ view }: { view: string }) {
     if (m.phase === "ready" && m.t > 2.5) {
       m.phase = "throw";
       m.t = 0;
+      m.lastZ = points(s).S.z;
+      heard.current = { y: points(s).S.y, w: [0, 0], peak: [0, 0], theta: COCK, laid: true };
+      pricked.current = { n: 0, every: 0 };
+      dots.current?.geometry.setDrawRange(0, 0);
       sound.clatter();
     }
     if (m.phase === "throw" || m.phase === "after") {
       m.acc += dt;
       while (m.acc >= 1 / 60) {
         m.acc -= 1 / 60;
-        if (tick(s)) sound.twang(0.7);
-        // The stone strikes the wall, or the ground.
-        if (s.released && pose.current.stone && (s.S.y <= 0.2 || (s.S.z >= wallZ - 1.5 && s.S.y < 9.2))) {
-          pose.current.stone = false;
-          const hit = new THREE.Vector3(0, Math.max(0.5, s.S.y), Math.min(s.S.z, wallZ - 1.5));
-          smoke.current?.emit(hit, 6);
-          smoke.current?.emit(hit.clone().add(new THREE.Vector3(1, 1, 0)), 5);
-          sound.thud(1.4);
-          debris.current.forEach((d) => {
-            d.on = true;
-            d.p.copy(hit);
-            d.v.set((Math.random() - 0.5) * 8, 4 + Math.random() * 6, -2 - Math.random() * 5);
-          });
-          m.phase = "after";
-          m.t = 0;
+        if (step(s, 1 / 60) === "release") sound.twang(0.7);
+        const now = points(s);
+        // While the sling still drags the stone along its trough, it scrapes up dust.
+        const scrape = now.S.z - m.lastZ;
+        m.lastZ = now.S.z;
+        const ear = heard.current;
+        // Stone grinding along the trough for as long as it is dragged, then
+        // the air round the sling, rising with the stone's speed until it is let go.
+        const pace = Math.hypot(scrape, now.S.y - ear.y) * 60; // metres per second
+        ear.y = now.S.y;
+        if (s.phase === "trough" && Math.abs(scrape) > 0.001) sound.scrape(pace / 6);
+        if (s.phase === "sling") sound.whoosh(pace / 45, 0.22);
+        if (s.phase === "flight") {
+          // Afterwards the arm and the box rock themselves still, and the
+          // timber creaks each time one of them stops and swings back, as
+          // loudly as it was swinging.
+          for (let i = 0; i < 2; i++) {
+            ear.peak[i] = Math.max(ear.peak[i], Math.abs(s.w[i]));
+            if (s.w[i] * ear.w[i] < 0) {
+              if (ear.peak[i] > 0.25) sound.creak(ear.peak[i] / 2.5);
+              ear.peak[i] = 0;
+            }
+            ear.w[i] = s.w[i];
+          }
+        }
+        if (s.phase === "trough" && Math.abs(scrape) > 0.001 && Math.random() < 0.18) {
+          smoke.current?.burst(new THREE.Vector3(0, 0.15, now.S.z), { kind: "dust", size: 0.9, dir: new THREE.Vector3(0, 0.4, -Math.sign(scrape)), speed: 2, spread: 0.6, count: 2 });
+        }
+        const rock = s.stone;
+        if (s.phase === "flight" && pose.current.stone) {
+          // One dot every twentieth of a second of flight.
+          const ink = pricked.current;
+          const geo = dots.current?.geometry;
+          if (geo && ink.every++ % 3 === 0 && ink.n < TRAIL) {
+            const at = geo.attributes.position as THREE.BufferAttribute;
+            at.setXYZ(ink.n++, 0, rock.y, rock.z);
+            at.needsUpdate = true;
+            geo.setDrawRange(0, ink.n);
+          }
+          // The stone strikes the wall, or the ground.
+          if (rock.y <= 0.2 || (rock.z >= wallZ - 1.5 && rock.y < 9.2)) {
+            pose.current.stone = false;
+            const hit = new THREE.Vector3(0, Math.max(0.5, rock.y), Math.min(rock.z, wallZ - 1.5));
+            // Against the wall the dust is thrown back off the stonework and
+            // rolls down it; in the field it goes up and on with the stone.
+            const atWall = rock.y > 0.2;
+            smoke.current?.burst(hit, { size: 5, dir: new THREE.Vector3(0, atWall ? 0.5 : 1, atWall ? -1 : 0.5), speed: 4.5, spread: 0.8, count: 8 });
+            smoke.current?.burst(hit.clone().setY(0.4), { kind: "dust", size: 3.5, dir: new THREE.Vector3(0, 0.2, -1), speed: 3, spread: 0.9, count: 5 });
+            sound.thud(1.4);
+            debris.current.forEach((d) => {
+              d.on = true;
+              d.p.copy(hit);
+              d.v.set((Math.random() - 0.5) * 8, 4 + Math.random() * 6, -2 - Math.random() * 5);
+            });
+            m.phase = "after";
+            m.t = 0;
+          }
         }
       }
       if (m.phase === "after" && m.t > 4) {
         m.phase = "cock";
         m.t = 0;
-        m.from = { A: { z: s.A.z, y: s.A.y }, B: { z: s.B.z, y: s.B.y }, C: { z: s.C.z, y: s.C.y }, S: { z: s.S.z, y: s.S.y }, stone: false };
+        m.from = [s.q[0], s.q[1], s.q[2]];
+        heard.current.theta = s.q[0];
+        heard.current.laid = false;
       }
     }
     if (m.phase === "cock") {
-      // The crew wind the arm back down with the winch (eased), and reload.
+      // The crew steady the swinging box and sling, then wind the arm back
+      // down with the winch and lay a new stone in the trough.
       const k = Math.min(1, m.t / 4);
-      const e = k * k * (3 - 2 * k);
-      const from = Math.atan2(m.from.A.y - P.y, m.from.A.z - P.x);
-      let to = COCK;
-      while (to - from > Math.PI) to -= Math.PI * 2;
-      while (from - to > Math.PI) to += Math.PI * 2;
-      const pp = poseFor(from + (to - from) * e);
-      pose.current = { ...pp, stone: k > 0.85 };
-      if (Math.floor(m.t / 0.3) !== Math.floor((m.t - dt) / 0.3)) sound.knock();
+      const [th0, ph0, ps0] = m.from;
+      const theta = th0 + (nearest(COCK, th0) - th0) * smooth(k);
+      const still = smooth(Math.min(1, k / 0.3));
+      const pp = poseFor(theta);
+      const ph = ph0 + (nearest(-Math.PI / 2, ph0) - ph0) * still;
+      const ps = ps0 + (nearest(-Math.PI / 2, ps0) - ps0) * still;
+      const swung = { z: pp.A.z + SL * Math.cos(ps), y: pp.A.y + SL * Math.sin(ps) };
+      pose.current = {
+        A: pp.A,
+        B: pp.B,
+        C: { z: pp.B.z + HC * Math.cos(ph), y: pp.B.y + HC * Math.sin(ph) },
+        // Once it hangs still, the sling follows the tip down and is laid out along the trough.
+        S: still < 1 ? { z: swung.z + (pp.S.z - swung.z) * still, y: Math.max(STONE_Y, swung.y + (pp.S.y - swung.y) * still) } : pp.S,
+        stone: k > 0.85,
+      };
+      // The winch knocks for every 0.2 rad the arm is wound down, so it
+      // quickens and slows with the arm; the new stone thuds into the trough.
+      const ear = heard.current;
+      if (stepped(ear.theta, theta, 0.2)) sound.knock();
+      ear.theta = theta;
+      if (k > 0.85 && !ear.laid) {
+        ear.laid = true;
+        sound.thud(0.35);
+      }
       if (k >= 1) {
         m.s = cocked();
         m.phase = "ready";
         m.t = 0;
       }
     } else {
-      pose.current = { A: { z: s.A.z, y: s.A.y }, B: { z: s.B.z, y: s.B.y }, C: { z: s.C.z, y: s.C.y }, S: { z: s.S.z, y: s.S.y }, stone: pose.current.stone };
-      if (m.phase === "ready") pose.current.stone = true;
+      const now = points(s);
+      pose.current = { A: now.A, B: now.B, C: now.C, S: now.S, rock: s.phase === "flight" ? now.stone : undefined, stone: m.phase === "ready" ? true : pose.current.stone };
     }
 
     // Debris from the wall.
@@ -473,7 +488,8 @@ function ThrowScene({ view }: { view: string }) {
     const sub = subject.current;
     const flying = view === "segui" && pose.current.stone && m.phase !== "ready" && m.phase !== "cock";
     if (flying) {
-      sub.pos.set(0, Math.max(1, s.S.y), s.S.z);
+      const at = pose.current.rock ?? pose.current.S;
+      sub.pos.set(0, Math.max(1, at.y), at.z);
       sub.look!.copy(sub.pos);
     } else if (view === "mura") {
       sub.pos.set(0, 5, wallZ);
@@ -498,6 +514,7 @@ function ThrowScene({ view }: { view: string }) {
         <Cloud key={i} position={[x, y, z]} scale={sc} seed={seed} />
       ))}
       <TrebuchetModel drive={drive} pose={pose} />
+      <primitive ref={dots} object={trail} />
       <Castle z={wallZ} />
       <group ref={chunks}>
         {Array.from({ length: DEBRIS }, (_, i) => (
@@ -523,6 +540,10 @@ const CONFIG: RoomConfig = {
   Model: TrebuchetModel,
   rest: 0,
   animate: (t) => 0.5 - 0.5 * Math.cos(t * 0.9),
+  // The axle creaks each time the arm stops and swings back.
+  voice: (a, was, before) => {
+    if ((was - before) * (a - was) < 0) sound.creak(0.6);
+  },
   play: ["muovi il braccio", "swing"],
   lift: -0.88,
   extent: 8,
@@ -532,7 +553,7 @@ const CONFIG: RoomConfig = {
     views: VIEWS,
     start: [26, 8, -4],
     far: 900,
-    hint: "simulated, not animated: the counterweight falls, the sling whips, the stone lets go at 40°",
+    hint: "simulated, not animated: the weight falls, the sling whips over, its loop slips the prong and the stone flies free, 185 m in six seconds",
   },
 };
 

@@ -1,8 +1,10 @@
 "use client";
 
 import { motion, useInView, useMotionValueEvent, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
-import { Fragment, memo, useEffect, useRef, useState, type ComponentType, type CSSProperties, type RefObject } from "react";
+import { Fragment, memo, useCallback, useEffect, useRef, useState, type ComponentType, type CSSProperties, type RefObject } from "react";
+import { FolioLive, rose, stepped } from "@/components/cues";
 import { Loupe } from "@/components/Loupe";
+import { sound } from "@/lib/sound";
 
 export type MachineProps = { p: MotionValue<number> };
 
@@ -242,10 +244,37 @@ export const Exhibit = memo(function Exhibit({
   const storyEvents = useTransform(storyOpacity, (o) => (o > 0.5 ? "auto" : "none"));
   const verdictEvents = useTransform(verdictOpacity, (o) => (o > 0.5 ? "auto" : "none"));
 
-  const inView = useInView(ref, { amount: 0.35 });
+  // The folio lying across the middle of the screen is the open one. (A
+  // share of the folio's own height can't be asked for: it is five screens
+  // tall, so no more than a fifth of it is ever in view.) The page turns as
+  // the seam between two folios passes mid-screen, in either direction.
+  const inView = useInView(ref, { margin: "-50% 0px -50% 0px" });
   useEffect(() => {
     if (inView) onActive(index);
   }, [inView, index, onActive]);
+
+  // Sound belongs only to the folio pinned on screen: one that is scrolled
+  // past in a jump still runs its drawing through, unseen, and must stay quiet.
+  const pinned = useCallback(() => {
+    const v = scrollYProgress.get();
+    return v > 0 && v < 1 && !exploring;
+  }, [scrollYProgress, exploring]);
+  const live = useCallback(() => pinned() && !showScan, [pinned, showScan]);
+  // The quill: a scratch for every bit of line the scroll lays down. Only
+  // forwards (un-drawing is not a pen), and only while there is ink going on.
+  const penAt = useRef(p.get());
+  useMotionValueEvent(p, "change", (v) => {
+    const was = penAt.current;
+    penAt.current = v;
+    if (!reduce && v > was && v > 0.02 && v < 0.38 && stepped(was, v, 0.012) && live()) sound.scratch(0.4 + (v - was) * 60);
+  });
+  // The verdict is stamped: heard as the stamp comes to rest on the page.
+  const stampAt = useRef(base.get());
+  useMotionValueEvent(base, "change", (v) => {
+    const was = stampAt.current;
+    stampAt.current = v;
+    if (rose(was, v, 0.795) && pinned()) sound.stamp();
+  });
 
   // Text choreography, all keyed to the same scroll progress as the drawing.
   const headOpacity = useTransform(p, [0, 0.08], [0, 1]);
@@ -385,7 +414,9 @@ export const Exhibit = memo(function Exhibit({
               aria-label={`Animated ink drawing of ${data.title}`}
             >
               <g id={`machine-${index}`}>
-                <Machine p={p} />
+                <FolioLive.Provider value={live}>
+                  <Machine p={p} />
+                </FolioLive.Provider>
               </g>
               <Loupe svgRef={svgRef} target={`machine-${index}`} id={String(index)} />
             </svg>

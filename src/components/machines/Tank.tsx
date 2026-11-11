@@ -1,6 +1,8 @@
 "use client";
 
 import { motion, useTransform, type MotionValue } from "motion/react";
+import { fell, rose, stepped, useCues } from "@/components/cues";
+import { sound } from "@/lib/sound";
 import { Dim, Fibers, Ink, InkSet, Micro, Note, TG, Tone } from "@/components/ink";
 import type { MachineProps } from "@/components/Exhibit";
 import { circle, easeInOut, ellipse, gear, halfEllipse, hatch, line, range, spokes } from "@/lib/geo";
@@ -167,6 +169,20 @@ export function Tank({ p }: MachineProps) {
   const roll = (v: number) => easeInOut(range(v, 0.36, 0.58)) * 64 - 40;
   const lift = (v: number) => easeInOut(range(v, 0.5, 0.62)) * -118 + easeInOut(range(v, 0.92, 1)) * 118;
   const crank = (v: number) => range(v, 0.36, 1) * 900;
+
+  useCues(p, (v, was) => {
+    // The wheels rumble round: a low knock for every 15° they turn.
+    if (stepped(roll(was) / WHEEL_R, roll(v) / WHEEL_R, Math.PI / 12)) sound.tick(0.8, 0.45);
+    // Once the shell is off, the crown wheel is heard tooth by tooth (16 teeth).
+    if (Math.max(v, was) > 0.52 && Math.min(v, was) < 0.96 && stepped(crank(was), crank(v), 360 / 16)) sound.tick(0.7);
+    // The shell groans as it starts to lift away or to come back down, and
+    // lands with a thump when it is home again.
+    if (rose(was, v, 0.5) || rose(was, v, 0.92) || fell(was, v, 0.62) || fell(was, v, 0.999)) sound.creak(0.8);
+    if (rose(was, v, 0.997) || fell(was, v, 0.503)) sound.thud(0.4);
+    // Each bombard fires as its smoke appears. Scrolling back only draws the
+    // smoke in again, which makes no sound.
+    for (let i = 0; i < CANNON_ANGLES.length; i++) if (rose(was, v, 0.72 + i * 0.03)) sound.boom(0.5);
+  });
 
   const body = useTransform(p, (v) => `translate(${roll(v)} 0)`);
   const top = useTransform(p, (v) => `translate(0 ${lift(v)})`);

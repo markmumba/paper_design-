@@ -1,8 +1,11 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { animate, AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { passage } from "@/lib/passage";
+import { sound } from "@/lib/sound";
+import { SoundToggle } from "@/components/SoundToggle";
 import { Exhibit } from "@/components/Exhibit";
 import { InkFilters } from "@/components/ink";
 import { CONTEXT_SOURCES, RULES, SHEET, STUDIES, type Source, type Study } from "./data";
@@ -54,6 +57,18 @@ function MeasureTheSheet() {
   const reduce = useReducedMotion();
   const [ruleId, setRuleId] = useState(RULES[0].id);
   const rule = RULES.find((r) => r.id === ruleId) ?? RULES[0];
+  // Choosing a rule rules it onto the sheet: each line is heard for exactly
+  // as long as it takes to draw, each point as it is dabbed on. The times are
+  // the ones `draw` and the dots below animate with.
+  const pick = (r: (typeof RULES)[number]) => {
+    if (r.id === ruleId) return;
+    setRuleId(r.id);
+    // Whatever the last rule was still drawing stops with it.
+    sound.hush();
+    if (reduce) return;
+    r.paths.forEach((_, i) => sound.stroke(1.1, i * 0.25));
+    if (r.dots?.length) sound.dabs(r.dots.length, 0.9, 0.08);
+  };
   const draw = (i: number) =>
     reduce
       ? { initial: false as const }
@@ -77,7 +92,7 @@ function MeasureTheSheet() {
               <button
                 type="button"
                 aria-pressed={r.id === ruleId}
-                onClick={() => setRuleId(r.id)}
+                onClick={() => pick(r)}
                 className={`flex w-full gap-3 rounded-sm py-1.5 text-left text-lg transition-colors ${r.id === ruleId ? "text-ink" : "text-faded hover:text-sepia"}`}
               >
                 <span className="w-6 font-caps text-rust">{["i", "ii", "iii", "iv", "v"][i]}.</span>
@@ -175,13 +190,59 @@ function MoreSheets() {
 }
 
 export function Anatomy() {
-  const onActive = useCallback(() => {}, []);
+  // Turning to another folio sounds like turning a page.
+  const lastFolio = useRef(-1);
+  const onActive = useCallback((i: number) => {
+    if (i !== lastFolio.current) sound.pageFlip();
+    lastFolio.current = i;
+  }, []);
+  const onEnable = useCallback(() => sound.pageFlip(), []);
+  const manRef = useRef<HTMLElement>(null);
+  const wordsRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  // Arriving from the orrery: the man is standing mid-screen where the hero
+  // left him. Start him there, walk him to his place, then let the words in.
+  useLayoutEffect(() => {
+    const from = passage.rect;
+    const el = manRef.current;
+    if (!from || !el) return;
+    // Measure his resting place, not wherever a previous run left him. (React
+    // runs effects twice in development, so this must be safe to repeat.)
+    el.style.transform = "";
+    const to = el.getBoundingClientRect();
+    if (!to.width) return;
+    // The codex turns to the anatomy as he sets off.
+    sound.pageFlip();
+    const ease = [0.6, 0, 0.2, 1] as const;
+    const walk = animate(
+      el,
+      {
+        x: [from.left + from.width / 2 - (to.left + to.width / 2), 0],
+        y: [from.top + from.height / 2 - (to.top + to.height / 2), 0],
+        scale: [from.width / to.width, 1],
+      },
+      { duration: 1.3, ease },
+    );
+    const words = [wordsRef.current, navRef.current].filter((n) => n !== null);
+    const fade = animate(words, { opacity: [0, 1] }, { duration: 1, delay: 0.7, ease: "easeOut" });
+    // Spent once he has arrived, so coming back to this page later is plain.
+    let stopped = false;
+    walk.then(() => {
+      if (!stopped) passage.rect = null;
+    });
+    return () => {
+      stopped = true;
+      walk.stop();
+      fade.stop();
+    };
+  }, []);
   const allSources = [...STUDIES.flatMap((s) => s.sources), ...CONTEXT_SOURCES].filter((s, i, a) => a.findIndex((x) => x.href === s.href) === i);
   return (
     <main id="top">
+      <SoundToggle onEnable={onEnable} />
       <InkFilters />
       <div className="mx-auto max-w-7xl px-4 pt-8 md:px-10">
-        <nav className="flex items-center justify-between">
+        <nav ref={navRef} className="flex items-center justify-between">
           <Link href="/" className="font-script text-xl text-sepia hover:text-ink">
             ← Codex of Machines
           </Link>
@@ -190,7 +251,8 @@ export function Anatomy() {
           </a>
         </nav>
 
-        <header className="flex min-h-[80svh] max-w-3xl flex-col justify-center py-16">
+        <header className="grid min-h-[80svh] items-center gap-8 py-12 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:gap-12 md:py-16">
+          <div ref={wordsRef} className="max-w-3xl">
           <p className="font-caps text-sm tracking-[0.3em] text-rust uppercase">Anatomia</p>
           <h1 className="mt-2 font-display text-[clamp(2.6rem,6vw,4.8rem)] leading-none">The body as a machine</h1>
           <p className="mt-2 font-script text-2xl text-sepia">Le proporzioni del corpo umano</p>
@@ -206,6 +268,12 @@ export function Anatomy() {
             Royal Collection at Windsor.
           </p>
           <p className="mt-8 font-script text-xl text-faded">scroll, and the folios draw themselves ↓</p>
+          </div>
+          {/* The man from the heart of the orrery. Leonardo's own ink, lifted from the sheet. */}
+          <figure ref={manRef} className="relative z-10 order-first mx-auto w-[min(70vw,24rem)] will-change-transform md:order-none md:w-full md:max-w-md">
+            {/* eslint-disable-next-line @next/next/no-img-element -- transparent ink lifted from the scan, sized by its column */}
+            <img src="/anatomy/vit.webp" alt="Leonardo’s Vitruvian Man: a man in two poses inside a circle and a square." width={900} height={898} className="h-auto w-full" />
+          </figure>
         </header>
       </div>
 
@@ -224,7 +292,8 @@ export function Anatomy() {
           red marks, brackets and moving eddies laid over them are ours, and each folio’s toggle shows the whole
           sheet. The Italian captions are ours, written in his manner, not his words. The
           photographs of his sheets come from the institutions that hold them, shared as public domain on Wikimedia
-          Commons. The red measurements are ours.
+          Commons. The red measurements are ours. The skull and spine you can take apart in three dimensions are not his: they
+          are a modern anatomical model, BodyParts3D, simplified for the web and shared under the same licence.
         </p>
         <SourceLinks sources={allSources} />
       </section>

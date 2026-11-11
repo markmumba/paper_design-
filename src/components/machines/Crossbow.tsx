@@ -1,6 +1,8 @@
 "use client";
 
 import { motion, useTransform } from "motion/react";
+import { rose, stepped, useCues } from "@/components/cues";
+import { sound } from "@/lib/sound";
 import { Dim, Fibers, Ink, InkSet, LivePath, Micro, Note, TG, Tone } from "@/components/ink";
 import type { MachineProps } from "@/components/Exhibit";
 import { circle, easeIn, easeInOut, gear, hatch, line, poly, range } from "@/lib/geo";
@@ -112,6 +114,14 @@ const span = dimension(566, 50, 566, 470, 0);
 const bed = dimension(110, 318, 470, 318, 0);
 
 export function Crossbow({ p }: MachineProps) {
+  useCues(p, (v, was) => {
+    // The ratchet clicks once for each of the winch's twelve teeth, as it
+    // winds (or, scrolling back, as it is let off again).
+    const turned = (x: number) => Math.max(0, x < 0.7 ? tension(x) : 1) * 900;
+    if (stepped(turned(was), turned(v), 360 / 12)) sound.tick();
+    // The nut lets go: the string is loosed on the frame the bolt leaves.
+    if (rose(was, v, 0.7)) sound.twang();
+  });
   const shape = useTransform(p, (v) => bow(tension(v)));
   const outer = useTransform(shape, (b) => b.outer);
   const inner = useTransform(shape, (b) => b.inner);

@@ -30,7 +30,7 @@ const script = La_Belle_Aurore({
 
 export const metadata: Metadata = {
   title: "Codex of Machines",
-  description: "Five inventions from the notebooks of Leonardo da Vinci, drawn in ink and set in motion by your scroll.",
+  description: "Five inventions from the notebooks of Leonardo da Vinci, and the body he studied as one more machine, drawn in ink and set in motion by your scroll.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

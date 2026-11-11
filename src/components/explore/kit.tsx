@@ -265,6 +265,57 @@ export function Beam({ from, to, r, kind = "wood", sides = 8 }: { from: Vec3; to
   );
 }
 
+/**
+ * A wooden cart wheel turning about its local X axis: an open felloe rim with
+ * real thickness, an iron tyre shrunk round it, a hub standing proud of the
+ * faces, and spokes you can see between. Built open (not a disc with slats laid
+ * on it) so it reads as a wheel from either face and from edge on.
+ */
+export function Wheel({ r, width = 0.16, spokes = 8 }: { r: number; width?: number; spokes?: number }) {
+  const inner = r * 0.8;
+  const hubR = r * 0.2;
+  const rim = useMemo(() => {
+    const shape = new THREE.Shape();
+    shape.absarc(0, 0, r * 0.985, 0, Math.PI * 2, false);
+    const hole = new THREE.Path();
+    hole.absarc(0, 0, inner, 0, Math.PI * 2, true);
+    shape.holes.push(hole);
+    const g = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false, curveSegments: 28 });
+    g.translate(0, 0, -width / 2);
+    g.rotateY(Math.PI / 2);
+    return g;
+  }, [r, inner, width]);
+  const spokeLen = inner - hubR + r * 0.06;
+  return (
+    <group>
+      <mesh geometry={rim} castShadow>
+        <Look kind="darkwood" />
+      </mesh>
+      {/* The iron tyre: a band round the tread, a little narrower than the felloe. */}
+      <mesh rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[r, r, width * 0.8, 28, 1, true]} />
+        <Look kind="iron" />
+      </mesh>
+      <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
+        <cylinderGeometry args={[hubR, hubR, width * 1.7, 14]} />
+        <Look kind="darkwood" />
+      </mesh>
+      <mesh rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[hubR * 0.45, hubR * 0.45, width * 2.1, 8]} />
+        <Look kind="iron" />
+      </mesh>
+      {Array.from({ length: spokes }, (_, k) => (
+        <group key={k} rotation={[(k / spokes) * Math.PI * 2, 0, 0]}>
+          <mesh position={[0, hubR + spokeLen / 2 - r * 0.03, 0]} castShadow>
+            <boxGeometry args={[width * 0.42, spokeLen, r * 0.085]} />
+            <Look kind="wood" />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
 /** A spur gear as an extruded tooth profile, facing +Z. */
 export function gearGeometry(r: number, teeth: number, depth: number, thickness: number, hole = 0.18) {
   const shape = new THREE.Shape();

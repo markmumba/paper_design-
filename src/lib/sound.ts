@@ -7,6 +7,14 @@
  *  - pageFlip(): a sheet of heavy paper turned: rustle swell, crisp edge, settle
  *  - flap(k):    a canvas wing beating air: a low whoosh with fabric flutter
  *  - crackle():  the odd pop of a candle wick, for the hero's ambience
+ *  - tick / creak / whoosh / scrape / scratch / stroke / stamp: the small
+ *    voices of wood, rope, air and pen that the machines and folios make
+ *
+ * Every voice is a one-shot fired at the frame its event happens, so a cue is
+ * only ever as late as the audio clock's few milliseconds of look-ahead.
+ * Each has a shortest gap, so one event can never sound twice, and nothing
+ * plays while the tab is hidden. hush() cuts whatever is still ringing when a
+ * scene is left.
  *
  * Browsers only allow audio after a user gesture, so sound starts off and is
  * switched on with the toggle; the choice is remembered on this device.
@@ -20,8 +28,9 @@ class SoundEngine {
   private room: ConvolverNode | null = null;
   private noise: AudioBuffer | null = null;
   private listeners = new Set<Listener>();
-  private lastFlip = 0;
-  private lastFlap = 0;
+  private out: GainNode | null = null;
+  private wet: GainNode | null = null;
+  private last = new Map<string, number>();
   enabled = false;
 
   constructor() {
@@ -52,16 +61,58 @@ class SoundEngine {
       this.ensure();
       await this.ctx?.resume();
     } else {
+      // Cut what is sounding first: a suspended context would otherwise play
+      // the rest of it when sound is next switched on.
+      this.hush(true);
       await this.ctx?.suspend();
     }
     this.listeners.forEach((l) => l());
   }
 
-  /** A remembered "on" still needs a gesture before audio may start. */
-  unlock() {
-    if (!this.enabled) return;
+  /**
+   * A remembered "on" still needs a gesture before audio may start. Resolves
+   * true once the context is really running (the browser may still refuse).
+   */
+  async unlock() {
+    if (!this.enabled) return false;
     this.ensure();
-    void this.ctx?.resume();
+    try {
+      await this.ctx?.resume();
+    } catch {
+      /* not a gesture the browser accepts: try again on the next one */
+    }
+    return this.ctx?.state === "running";
+  }
+
+  /**
+   * Silence everything still ringing (a boom's tail, a creak) when its scene
+   * is closed or left. Sounds already scheduled play out unheard on the old
+   * bus; anything fired afterwards goes to a fresh one.
+   */
+  hush(hard = false) {
+    const ctx = this.ctx;
+    if (!ctx || !this.out || !this.wet || !this.room || !this.master) return;
+    const out = this.out;
+    const wet = this.wet;
+    const room = this.room;
+    const drop = () => {
+      out.disconnect();
+      wet.disconnect();
+      room.disconnect();
+    };
+    if (hard) drop();
+    else {
+      out.gain.setTargetAtTime(0, ctx.currentTime, 0.03);
+      wet.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+      window.setTimeout(drop, 500);
+    }
+    this.out = ctx.createGain();
+    this.out.connect(this.master);
+    this.room = ctx.createConvolver();
+    this.room.buffer = room.buffer;
+    this.wet = ctx.createGain();
+    this.wet.gain.value = 0.22;
+    this.room.connect(this.wet).connect(this.master);
   }
 
   private ensure() {
@@ -86,14 +137,35 @@ class SoundEngine {
     const noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const nd = noise.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    // Voices play into `out`, a bus that hush() can swap for a silent new one.
+    const out = ctx.createGain();
+    out.connect(master);
     this.ctx = ctx;
     this.master = master;
+    this.out = out;
+    this.wet = wet;
     this.room = room;
     this.noise = noise;
   }
 
   private ready() {
-    return this.enabled && this.ctx && this.ctx.state === "running" ? this.ctx : null;
+    return this.enabled && this.ctx && this.ctx.state === "running" && !document.hidden ? this.ctx : null;
+  }
+
+  /**
+   * Gate for every voice: drops a cue that comes within `gap` ms of the same
+   * voice's last one, then says whether audio can play at all. When
+   * `window.__cues` is an array, each cue that passes is logged there with its
+   * time, so cue timing can be checked against the animation without ears.
+   */
+  private cue(name: string, gap: number) {
+    if (typeof window === "undefined") return null;
+    const now = performance.now();
+    if (now - (this.last.get(name) ?? -1e9) < gap) return null;
+    this.last.set(name, now);
+    const log = (window as unknown as { __cues?: { name: string; t: number }[] }).__cues;
+    if (log) log.push({ name, t: now });
+    return this.ready();
   }
 
   /** A burst of filtered noise with an envelope, routed dry + into the room. */
@@ -143,7 +215,7 @@ class SoundEngine {
     const pan = ctx.createStereoPanner();
     pan.pan.value = opts.pan ?? 0;
     g.connect(pan);
-    pan.connect(this.master!);
+    pan.connect(this.out!);
     if (opts.wet) {
       const send = ctx.createGain();
       send.gain.value = opts.wet;
@@ -158,10 +230,10 @@ class SoundEngine {
   }
 
   /** The candle: match scratch, the flare catching, then the flame settling with a few pops. */
-  strike() {
-    const ctx = this.ready();
+  strike(delay = 0) {
+    const ctx = this.cue("strike", 1200);
     if (!ctx) return;
-    const t = ctx.currentTime + 0.02;
+    const t = ctx.currentTime + 0.02 + delay;
     // Scratch: two rough strokes of the match head on the striker.
     for (let i = 0; i < 2; i++) {
       this.burst({ at: t + i * 0.11, dur: 0.09, type: "bandpass", freq: [3200, 2200], q: 1.4, gain: 0.32, attack: 0.004, wet: 0.2 });
@@ -177,7 +249,7 @@ class SoundEngine {
     og.gain.setValueAtTime(0.0001, t + 0.2);
     og.gain.exponentialRampToValueAtTime(0.22, t + 0.26);
     og.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
-    o.connect(og).connect(this.master!);
+    o.connect(og).connect(this.out!);
     o.start(t + 0.2);
     o.stop(t + 1);
     for (let i = 0; i < 6; i++) this.click(t + 0.35 + Math.random() * 1.2, 0.05 + Math.random() * 0.12, Math.random() * 0.6 - 0.3);
@@ -185,7 +257,7 @@ class SoundEngine {
 
   /** A small wooden knock: choosing a part of the machine. */
   knock() {
-    const ctx = this.ready();
+    const ctx = this.cue("knock", 40);
     if (!ctx) return;
     const t = ctx.currentTime + 0.005;
     this.burst({ at: t, dur: 0.09, type: "bandpass", freq: [880 + Math.random() * 120, 520], q: 6, gain: 0.22, attack: 0.002, wet: 0.35 });
@@ -194,7 +266,7 @@ class SoundEngine {
 
   /** The machine coming apart or together: a clatter of cane and wood. */
   clatter() {
-    const ctx = this.ready();
+    const ctx = this.cue("clatter", 200);
     if (!ctx) return;
     const t = ctx.currentTime + 0.01;
     for (let i = 0; i < 7; i++) {
@@ -206,7 +278,7 @@ class SoundEngine {
 
   /** A bombard firing: a sharp crack, a low boom rolling round the room, and debris. */
   boom(k = 1) {
-    const ctx = this.ready();
+    const ctx = this.cue("boom", 90);
     if (!ctx) return;
     const t = ctx.currentTime + 0.005;
     this.burst({ at: t, dur: 0.12, type: "highpass", freq: [1800, 900], gain: 0.4 * k, attack: 0.001, wet: 0.5 });
@@ -218,7 +290,7 @@ class SoundEngine {
     og.gain.setValueAtTime(0.0001, t);
     og.gain.exponentialRampToValueAtTime(0.5 * k, t + 0.01);
     og.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
-    o.connect(og).connect(this.master!);
+    o.connect(og).connect(this.out!);
     o.start(t);
     o.stop(t + 0.85);
     for (let i = 0; i < 4; i++) this.click(t + 0.15 + Math.random() * 0.5, 0.05, Math.random() - 0.5);
@@ -226,7 +298,7 @@ class SoundEngine {
 
   /** A great bow loosed: the string's thwack and a fading hum. */
   twang(k = 1) {
-    const ctx = this.ready();
+    const ctx = this.cue("twang", 120);
     if (!ctx) return;
     const t = ctx.currentTime + 0.005;
     this.burst({ at: t, dur: 0.08, type: "bandpass", freq: [700, 300], q: 2, gain: 0.5 * k, attack: 0.001, wet: 0.4 });
@@ -241,7 +313,7 @@ class SoundEngine {
     og.gain.setValueAtTime(0.0001, t);
     og.gain.exponentialRampToValueAtTime(0.18 * k, t + 0.01);
     og.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
-    o.connect(lp).connect(og).connect(this.master!);
+    o.connect(lp).connect(og).connect(this.out!);
     o.start(t);
     o.stop(t + 0.75);
     this.burst({ at: t + 0.02, dur: 0.5, type: "bandpass", freq: [2400, 900], q: 0.8, gain: 0.1 * k, attack: 0.02, wet: 0.2 });
@@ -249,16 +321,120 @@ class SoundEngine {
 
   /** A heavy thud of something landing (stone on stone, bolt in wood). */
   thud(k = 1) {
-    const ctx = this.ready();
+    const ctx = this.cue("thud", 60);
     if (!ctx) return;
     const t = ctx.currentTime + 0.005;
     this.burst({ at: t, dur: 0.35, type: "lowpass", freq: [500, 80], q: 0.8, gain: 0.45 * k, attack: 0.003, wet: 0.5 });
     for (let i = 0; i < 5; i++) this.click(t + 0.02 + Math.random() * 0.3, 0.06 * k, Math.random() - 0.5);
   }
 
+  /** A ratchet pawl dropping, a cog's tooth meeting the next: one small wooden tick. */
+  tick(k = 1, pitch = 1, delay = 0) {
+    const ctx = this.cue(pitch < 0.7 ? "tick-low" : "tick", 45);
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.005 + delay;
+    const f = (1500 + Math.random() * 300) * pitch;
+    this.burst({ at: t, dur: 0.035, type: "bandpass", freq: [f, f * 0.72], q: 7, gain: 0.1 * k, attack: 0.001, pan: Math.random() * 0.3 - 0.15, wet: 0.25 });
+    this.burst({ at: t, dur: 0.012, type: "highpass", freq: [3400, 2400], gain: 0.025 * k, attack: 0.001, wet: 0.15 });
+  }
+
+  /** Timber under load: a beam, an axle or a hinge groaning as the weight comes onto it. */
+  creak(k = 1) {
+    const ctx = this.cue("creak", 180);
+    if (!ctx) return;
+    const s = Math.max(0.2, Math.min(1, k));
+    const t = ctx.currentTime + 0.005;
+    const dur = 0.28 + 0.3 * s;
+    // Stick-slip: a slow sawtooth through a narrow band, rising as the wood gives.
+    const o = ctx.createOscillator();
+    o.type = "sawtooth";
+    const f0 = 62 + Math.random() * 30;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.linearRampToValueAtTime(f0 * (1.25 + 0.4 * Math.random()), t + dur);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 7;
+    bp.frequency.setValueAtTime(520 + Math.random() * 160, t);
+    bp.frequency.linearRampToValueAtTime(820 + Math.random() * 200, t + dur);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.16 * s, t + dur * 0.35);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(bp).connect(og).connect(this.out!);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+    this.burst({ at: t, dur, type: "bandpass", freq: [560, 700], q: 9, gain: 0.05 * s, attack: dur * 0.3, wet: 0.3 });
+  }
+
+  /** Air parting round something moving fast: a sling, an arm, a fall. `k` is how fast. */
+  whoosh(k = 1, dur = 0.5) {
+    const ctx = this.cue("whoosh", 140);
+    if (!ctx) return;
+    const s = Math.max(0.1, Math.min(1, k));
+    const t = ctx.currentTime + 0.005;
+    this.burst({ at: t, dur, type: "bandpass", freq: [320 + 200 * s, 900 + 1100 * s], q: 0.9, gain: 0.08 + 0.22 * s, attack: dur * 0.55, pan: Math.random() * 0.4 - 0.2, wet: 0.3 });
+    this.burst({ at: t, dur: dur * 0.9, type: "lowpass", freq: [180, 420 + 300 * s], q: 0.7, gain: 0.05 + 0.1 * s, attack: dur * 0.5, wet: 0.2 });
+  }
+
+  /** Stone dragged over wood: a short grind, meant to be repeated while the dragging lasts. */
+  scrape(k = 1) {
+    const ctx = this.cue("scrape", 70);
+    if (!ctx) return;
+    const s = Math.max(0.1, Math.min(1, k));
+    const t = ctx.currentTime + 0.005;
+    this.burst({ at: t, dur: 0.15, type: "bandpass", freq: [420 + 380 * s, 360], q: 1.2, gain: 0.06 + 0.13 * s, attack: 0.03, flutter: 34 + 20 * s, wet: 0.3 });
+  }
+
+  /** One short stroke of a quill on rag paper. `k` is how hard the pen is working. */
+  scratch(k = 1) {
+    const ctx = this.cue("scratch", 55);
+    if (!ctx) return;
+    const s = Math.max(0.25, Math.min(1, k));
+    const t = ctx.currentTime + 0.005;
+    const f = 2500 + Math.random() * 1300;
+    this.burst({ at: t, dur: 0.05 + Math.random() * 0.07, type: "bandpass", freq: [f, f * (0.7 + Math.random() * 0.5)], q: 2.4, gain: (0.035 + Math.random() * 0.03) * s, attack: 0.01, pan: Math.random() * 0.4 - 0.2, wet: 0.1 });
+  }
+
+  /** A long ruled line drawn in one pull of the pen, `dur` seconds long, starting after `delay`. */
+  stroke(dur: number, delay = 0) {
+    const ctx = this.cue("stroke", 0);
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.01 + delay;
+    this.burst({ at: t, dur, type: "bandpass", freq: [2300 + Math.random() * 500, 3100], q: 1.8, gain: 0.05, attack: dur * 0.3, flutter: 31, pan: Math.random() * 0.3 - 0.15, wet: 0.1 });
+  }
+
+  /** A run of `n` dabs of the pen (points marked on a sheet), `every` seconds apart, after `delay`. */
+  dabs(n: number, delay = 0, every = 0.08) {
+    const ctx = this.cue("dabs", 0);
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.01 + delay;
+    for (let i = 0; i < n; i++) {
+      this.burst({ at: t + i * every, dur: 0.05, type: "bandpass", freq: [1300 + Math.random() * 300, 800], q: 4, gain: 0.07, attack: 0.002, pan: Math.random() * 0.3 - 0.15, wet: 0.2 });
+    }
+  }
+
+  /** A drop of ink landing on the desk: a small wet pat, and the spatter round it. */
+  drip() {
+    const ctx = this.cue("drip", 60);
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.005;
+    const pan = Math.random() * 0.4 - 0.2;
+    this.burst({ at: t, dur: 0.11, type: "lowpass", freq: [700, 160], q: 1.4, gain: 0.26, attack: 0.002, pan, wet: 0.25 });
+    for (let i = 0; i < 4; i++) this.click(t + 0.015 + Math.random() * 0.09, 0.03 + Math.random() * 0.04, pan + Math.random() * 0.4 - 0.2);
+  }
+
+  /** A rubber stamp coming down on the page: the verdict. */
+  stamp() {
+    const ctx = this.cue("stamp", 400);
+    if (!ctx) return;
+    const t = ctx.currentTime + 0.005;
+    this.burst({ at: t, dur: 0.16, type: "lowpass", freq: [320, 90], q: 0.8, gain: 0.34, attack: 0.002, wet: 0.3 });
+    this.burst({ at: t, dur: 0.05, type: "bandpass", freq: [1800, 1200], q: 1.5, gain: 0.05, attack: 0.001, wet: 0.2 });
+  }
+
   /** An occasional pop from the wick. */
   crackle() {
-    const ctx = this.ready();
+    const ctx = this.cue("crackle", 200);
     if (!ctx) return;
     const t = ctx.currentTime;
     const n = 1 + Math.floor(Math.random() * 3);
@@ -267,11 +443,8 @@ class SoundEngine {
 
   /** Turning a heavy sheet of rag paper. */
   pageFlip() {
-    const ctx = this.ready();
+    const ctx = this.cue("pageFlip", 500);
     if (!ctx) return;
-    const now = performance.now();
-    if (now - this.lastFlip < 500) return;
-    this.lastFlip = now;
     const t = ctx.currentTime + 0.01;
     const pan = Math.random() * 0.5 - 0.25;
     // Rustle: the sheet lifting, a broad swell of mid-range noise.
@@ -286,11 +459,8 @@ class SoundEngine {
 
   /** One wingbeat. `k` (0..1) is how hard the wing is driven. */
   flap(k: number) {
-    const ctx = this.ready();
+    const ctx = this.cue("flap", 120);
     if (!ctx) return;
-    const now = performance.now();
-    if (now - this.lastFlap < 120) return;
-    this.lastFlap = now;
     const t = ctx.currentTime + 0.005;
     const s = Math.max(0.15, Math.min(1, k));
     const pan = Math.random() * 0.3 - 0.15;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMotionValueEvent, useTransform } from "motion/react";
-import { useRef } from "react";
+import { useTransform } from "motion/react";
+import { stepped, useCues } from "@/components/cues";
 import { sound } from "@/lib/sound";
 import { Dim, Fibers, Ink, InkSet, Micro, Note, TG, Tone } from "@/components/ink";
 import type { MachineProps } from "@/components/Exhibit";
@@ -168,15 +168,13 @@ export const WING_EDGE: [number, number][] = [
 ];
 
 export function Ornithopter({ p }: MachineProps) {
-  // Each new downstroke is heard as a wingbeat, as hard as you drove it.
-  const beat = useRef({ last: flapAngle(0), lastD: 0 });
-  useMotionValueEvent(p, "change", (v) => {
-    const b = beat.current;
-    const flap = flapAngle(v);
-    const d = flap - b.last;
-    b.last = flap;
-    if (d > 0.08 && b.lastD <= 0.08) sound.flap(Math.min(1, d / 2.2));
-    b.lastD = d;
+  // Each downstroke is heard as a wingbeat, as hard as you drove it. The
+  // wings turn from rising to falling at the top of their swing, three
+  // quarters of the way through each of the six cycles; passing that point is
+  // the start of a downstroke whichever way the scroll is running.
+  useCues(p, (v, was, speed) => {
+    const cycle = (x: number) => range(x, 0.36, 1) * 6;
+    if (Math.max(v, was) > 0.37 && stepped(cycle(was), cycle(v), 1, 0.75)) sound.flap(Math.min(1, speed / 0.11));
   });
 
   const flap = flapAngle;
