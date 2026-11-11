@@ -59,26 +59,69 @@ export function addFibres(geo: THREE.BufferGeometry) {
     fib[i * 3 + 2] = d.dot(w);
   }
   geo.setAttribute("fib", new THREE.BufferAttribute(fib, 3));
+  // The way the muscle runs, the same at every vertex.
+  const ax = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) ax.set([axis.x, axis.y, axis.z], i * 3);
+  geo.setAttribute("fibAxis", new THREE.BufferAttribute(ax, 3));
 }
 
-const FIBRE_KEY = () => "codex-muscle-fibres";
+const FIBRE_KEY = () => "codex-muscle-striations";
+/*
+ * Striations that follow the muscle across its surface. At each point the
+ * muscle's direction is laid flat on the surface (t), and the bundles are the
+ * lines that run along t: level lines of the position measured across it (b).
+ * Bundles come in uneven widths and depths, with dark grooves between them,
+ * a finer striation within, and small breaks along their length. Towards
+ * each end the muscle turns pale and smooth into tendon, and where its
+ * surface turns away from you it darkens, so neighbours separate.
+ */
 function fibres(shader: { vertexShader: string; fragmentShader: string }) {
   shader.vertexShader = shader.vertexShader
-    .replace("#include <common>", "#include <common>\nattribute vec3 fib;\nvarying vec3 vFib;")
-    .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFib = fib;");
-  shader.fragmentShader = shader.fragmentShader.replace("#include <common>", "#include <common>\nvarying vec3 vFib;");
+    .replace("#include <common>", "#include <common>\nattribute vec3 fib;\nattribute vec3 fibAxis;\nvarying vec3 vFib;\nvarying vec3 vObjP;\nvarying vec3 vObjN;\nvarying vec3 vAxis;")
+    .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFib = fib;\nvObjP = position;\nvObjN = normal;\nvAxis = fibAxis;");
+  shader.fragmentShader = shader.fragmentShader.replace(
+    "#include <common>",
+    "#include <common>\nvarying vec3 vFib;\nvarying vec3 vObjP;\nvarying vec3 vObjN;\nvarying vec3 vAxis;",
+  );
   halftone(shader);
   shader.fragmentShader = shader.fragmentShader.replace(
     "gl_FragColor = vec4(printed, diffuseColor.a);",
     /* glsl */ `
-    // Fibres: lines of constant angle round the muscle's long axis.
-    float sv = fract(atan(vFib.z, vFib.x) * 3.1831 + 0.5);
-    float fw = min(fwidth(sv), 0.2);
-    float fibre = smoothstep(0.33 - fw, 0.33 + fw, abs(sv - 0.5));
-    // They thin out towards the tendons at the ends.
-    fibre *= 1.0 - smoothstep(0.8, 1.0, abs(vFib.y));
-    printed = mix(printed, vec3(0.3, 0.1, 0.06), fibre * (0.55 + 0.4 * shade));
-    // The muscle's edge, where it turns away, darkens like a drawn contour.
+    // Round the muscle's long axis, smooth across the whole mesh: the bundles
+    // are the lines at a constant angle, gathering towards the tendons.
+    float across = atan(vFib.z, vFib.x);
+    float along = vFib.y;
+
+    // Bundles of fibres, of uneven width, with grooves between them.
+    float s1 = across * 3.8;
+    float id = floor(s1);
+    float h1 = fract(sin(id * 91.7) * 43758.5453);
+    float h2 = fract(sin(id * 12.3 + 4.1) * 15731.743);
+    float local = fract(s1);
+    float fw1 = fwidth(s1);
+    float gw = 0.06 + 0.1 * h1;
+    float groove = 1.0 - smoothstep(gw - fw1, gw + fw1, min(local, 1.0 - local));
+    // A pen-like break now and then along a groove.
+    groove *= step(0.1, fract(along * 6.0 + h1 * 9.0));
+    float near = 1.0 - smoothstep(0.45, 1.1, fw1);
+
+    // Finer striation within each bundle.
+    float s2 = across * 15.2 + h1 * 3.0;
+    float fw2 = fwidth(s2);
+    float fine = (1.0 - smoothstep(0.32 - fw2, 0.32 + fw2, abs(fract(s2) - 0.5))) * (1.0 - smoothstep(0.25, 0.7, fw2));
+
+    // Pale, smooth tendon towards each end.
+    float tendon = smoothstep(0.76, 0.97, abs(vFib.y));
+
+    vec3 fibreInk = vec3(0.27, 0.08, 0.05);
+    printed *= 1.0 + (h2 - 0.5) * 0.2 * (1.0 - tendon);
+    printed = mix(printed, fibreInk, groove * near * (0.7 + 0.3 * shade) * (1.0 - 0.85 * tendon));
+    printed = mix(printed, fibreInk, fine * 0.28 * (1.0 - tendon));
+    printed = mix(printed, vec3(0.93, 0.87, 0.76) * (1.0 - 0.3 * shade), tendon * 0.85);
+
+    // Where the surface turns away, it darkens like a drawn contour.
+    float facing = abs(dot(normalize(normal), normalize(vViewPosition)));
+    printed *= mix(0.6, 1.0, smoothstep(0.06, 0.5, facing));
     gl_FragColor = vec4(printed, diffuseColor.a);
     `,
   );
